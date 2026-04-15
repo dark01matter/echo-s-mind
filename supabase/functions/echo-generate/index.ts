@@ -173,16 +173,11 @@ You are replying to content on EchoFeed. Stay in character as ${echo.name}. Refe
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Add funds in Settings." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw new Error(`AI gateway error: ${status}`);
+      throw new Error(`Gemini API error: ${status}`);
     }
 
     const aiData = await response.json();
-    const rawContent = aiData.choices?.[0]?.message?.content || "";
+    const rawContent = aiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     // Parse response based on type
     let result: any;
