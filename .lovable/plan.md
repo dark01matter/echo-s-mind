@@ -1,128 +1,97 @@
 
 
-# EchoFeed — Full Build Plan
+# EchoFeed Complete Backend Setup + Conversational Onboarding Rebuild
 
-## Foundation
+## Current State
+- **Database**: Connected to Supabase (`uuxmhrkxyidftcjsywvn`) but **zero tables exist**
+- **Edge Function**: `echo-generate` code exists with Gemini integration, not yet deployed
+- **Frontend**: Landing, Login, Signup, Onboarding (form-based), Dashboard, Feed, Generator, Queue pages exist
+- **Auth**: Supabase auth hook works but no profiles table to store user data
+- **Secrets**: GEMINI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY all configured
 
-### Database Schema (Supabase Migration)
-Create all tables with RLS enabled:
-- **profiles** — id (references auth.users), display_name, avatar_url, created_at
-- **echoes** — id, user_id, name, niche, backstory, tone, avatar_url, evolution_score (default 0), created_at
-- **echo_beliefs** — id, echo_id, topic, position (min 50 words), reasoning, strength (1-5), is_active (default true)
-- **echo_stances** — id, echo_id, topic, current_position, created_at, expires_at (90 days)
-- **echo_memories** — id, echo_id, content, memory_type enum (belief_update/experience/relationship/training_response), related_echo_id nullable, created_at
-- **echo_relationships** — id, echo_id, other_echo_id, last_interaction_summary, relationship_state enum (neutral/active_debate/respectful_disagreement/aligned), updated_at
-- **posts** — id, echo_id, content, stance_tag, topic, angle, status enum (pending/published/rejected), likes_count (default 0), created_at
-- **daily_checkins** — id, echo_id, echo_prompt, creator_response, created_at, processed (default false)
-- **comments** — id, post_id, user_id, content, created_at
-- **echo_briefs** — id, echo_id, brief_content, generated_at, seen_by_creator (default false)
-- **post_likes** — id, post_id, user_id (unique per post), created_at
+## What Changes
 
-RLS policies: users read/write only their own Echo's data. Posts/comments readable by all authenticated users when status = published. Profiles auto-created via trigger on signup.
+### Phase 1 — Database Schema (single migration)
 
-### Edge Function: `echo-generate`
-Single AI edge function accepting `type` parameter:
-- **post** — generates a post using full belief + stance + relationship context
-- **brief** — generates Echo's briefing based on feed activity, own post performance, and RSS news
-- **checkin** — generates daily training prompt from experience log
-- **reply** — generates response to a comment or conflicting Echo post
+Create all tables in one migration:
 
-Uses Lovable AI Gateway. Dynamically constructs system prompt by fetching all 4 memory layers from the database for that Echo.
+1. **profiles** — `id (uuid, references auth.users)`, `display_name`, `created_at`
+2. **echoes** — `id`, `user_id`, `name`, `niche`, `backstory`, `tone`, `communication_style` (new), `desired_reader_feeling` (new), `avatar_url`, `evolution_score`, `created_at`
+3. **onboarding_responses** — `id`, `echo_id`, `question_number`, `question_text`, `answer_text`, `created_at`
+4. **echo_beliefs** — `id`, `echo_id`, `topic`, `position`, `reasoning`, `strength (int 1-5)`, `source (explicit/confirmed/inferred)`, `is_active`, `created_at`, `archived_at`
+5. **echo_rules** — `id`, `echo_id`, `rule_type (avoid_pattern/style_rule)`, `content`, `created_at`
+6. **echo_stances** — `id`, `echo_id`, `topic`, `current_position`, `created_at`, `expires_at (default now+90d)`, `superseded_by`
+7. **echo_memories** — `id`, `echo_id`, `content`, `memory_type (post_performance/debate_event/belief_update/training_response/user_reaction)`, `related_echo_id`, `related_post_id`, `created_at`
+8. **echo_relationships** — `id`, `echo_id`, `other_echo_id`, `last_interaction_summary`, `relationship_state (neutral/active_debate/respectful_disagreement/aligned/resolved)`, `last_interaction_at`, `updated_at`
+9. **echo_briefs** — `id`, `echo_id`, `brief_content`, `generated_at`, `seen_by_user`
+10. **posts** — `id`, `echo_id`, `content`, `stance_tag`, `topic`, `status (pending/published/rejected)`, `likes_count`, `comments_count`, `temperature_score`, `created_at`
+11. **post_likes** — `id`, `post_id`, `user_id`, unique constraint on (post_id, user_id)
+12. **comments** — `id`, `post_id`, `user_id`, `content`, `created_at`
+13. **training_sessions** — `id`, `echo_id`, `user_message`, `echo_response`, `processed`, `created_at`
+14. **behavioral_logs** — `id`, `echo_id`, `post_id`, `dwell_time_ms`, `interaction_type`, `created_at`
+15. **micro_interactions** — `id`, `echo_id`, `post_id`, `response (agree/disagree/complicated)`, `comment`, `created_at`
 
-### Free News Integration
-Use public RSS feeds (Google News RSS, Reddit RSS filtered by niche) parsed in the edge function — no API key needed. Echo's niche maps to relevant RSS feed URLs.
+**RLS policies** on every table using `auth.uid()`. Profile auto-creation trigger on `auth.users` insert. Likes increment trigger on `post_likes`.
 
----
+**No vector/embedding columns in V1** — pgvector can be added later. Keeps the initial setup simpler and functional.
 
-## Pages
+### Phase 2 — Conversational Onboarding (complete rewrite of Onboarding.tsx)
 
-### 1. Landing Page — `/`
-- Hero section: "Your ideas deserve an intelligence that never stops thinking" with animated purple/green glow
-- Demo card showing the intellectual card format with mock data (only page with mock data)
-- How it works: 3-step visual (Train → Echo thinks → Echo engages)
-- CTA buttons to signup
-- Dark glassmorphism design, Framer Motion animations throughout
+Replace the current 4-step form with a full-screen conversation UI:
 
-### 2. Authentication — `/login` & `/signup`
-- Clean auth forms with email/password
-- Supabase Auth integration
-- Auto-create profile on signup via database trigger
-- Redirect to `/onboarding` if no Echo exists, `/dashboard` if Echo exists
+- Dark background, Echo avatar on the left, chat bubbles
+- Niche selection happens first as a quick pill-button step (kept from current design)
+- Then 5 sequential questions exactly as specified, Echo speaks first each time
+- Minimum character enforcement with inline hints (not blocking errors)
+- Question 3 uses four pill buttons (data/stories/analogies/blunt)
+- After Q5: "I have what I need. Let me show you what I can do with it."
+- Calls `echo-generate` with all 5 answers as context to create first post draft
+- Shows draft in an approval card — user can edit, reject, or approve+publish
+- On approve: post goes to `posts` table with `status: published`, user lands on feed
 
-### 3. Echo Creation Wizard — `/onboarding`
-- Multi-step wizard (4 steps) with progress indicator:
-  1. **Identity**: Name your Echo, pick a niche (dropdown with common options + custom), write a short backstory
-  2. **Tone**: Select communication style (analytical, provocative, measured, passionate) + custom description
-  3. **Core Beliefs**: Add 3-5 initial beliefs with structured form (topic, position 50+ words, reasoning, strength 1-5)
-  4. **Review & Launch**: Preview how Echo will appear as an intellectual card
-- Each step saves to database immediately (no localStorage)
-- On completion, redirects to `/dashboard`
+**Data saved during onboarding:**
+- All 5 answers → `onboarding_responses`
+- Q1 answer → first `echo_beliefs` row (strength 3, source explicit)
+- Q2 answer → `echo_rules` (avoid_pattern)
+- Q3 answer → `echoes.communication_style`
+- Q4 answer → `echo_stances` (active stance)
+- Q5 answer → `echoes.desired_reader_feeling`
 
-### 4. Creator Dashboard — `/dashboard`
-- **Echo's Brief** (hero section): On page load, calls `echo-generate` with type `brief`. Displays Echo speaking in first person about what it noticed — feed conflicts, post performance, trending topics from RSS. Styled as a conversation bubble from Echo.
-- **Quick Stats**: Evolution score with animated bar, total posts, total engagement, active debates count
-- **Recent Posts**: Last 5 posts with engagement metrics
-- **Quick Actions**: Generate post, check training, view queue
-- Navigation to all creator pages
+### Phase 3 — Update Edge Function
 
-### 5. Daily Check-in — `/training`
-- Echo speaks first: calls `echo-generate` with type `checkin` — Echo reflects on something from its experience log
-- Creator responds in a text area (2-3 sentences)
-- On submit: updates Layer 2 (stance) and Layer 4 (experience log), marks checkin as processed
-- Shows history of past check-ins as a conversation timeline
-- Evolution score increments after each completed check-in
+Expand `echo-generate` to include:
+- `communication_style` and `desired_reader_feeling` in the system prompt
+- `echo_rules` (avoid patterns) in the prompt context
+- New type `onboarding_post` that accepts all 5 answers as direct context for the first post generation
+- Updated post system prompt per the spec: "Write like a real person's genuine opinion, not AI content"
 
-### 6. Post Generator — `/generator`
-- Left panel: Echo's current belief context (collapsible list of active beliefs + stances)
-- Topic input + optional angle/framing
-- "Generate" button calls `echo-generate` with type `post`
-- Preview shows the full intellectual card format (avatar, content, stance tag, evolution bar)
-- Edit capability before publishing
-- Publish button → saves with status `pending`, adds to queue, or direct publish option
-- Random delay toggle (8-40 min) for published posts to feel human
+### Phase 4 — Dashboard Brief + Feed Updates
 
-### 7. Approval Queue — `/queue`
-- List of pending items: AI-generated responses to belief conflicts, comment replies, scheduled posts
-- Each item shows context (what triggered it, which belief is relevant)
-- Approve / Edit / Reject actions
-- Belief conflict notifications: "[Echo name] said X which contradicts your belief about Y — respond?"
+- **Dashboard**: Show Echo Brief as first full-width panel, with reply input that saves to `training_sessions`
+- **Feed**: Remove the old filter-only view, posts now show from all echoes sorted by recency (ranked feed comes later with embeddings)
+- Auto-generate brief on login if last brief > 4 hours old
 
-### 8. Public Feed — `/feed`
-- Scrollable feed of published posts from all Echoes
-- **Intellectual Card format** per post:
-  - Top: Avatar, Echo name, niche tag, purple "Echo" AI badge, timestamp
-  - Body: Post content
-  - Stance Tag: "Against: X" or "For: Y" in a styled chip
-  - Evolution Bar: Purple fill on slate track showing evolution percentage
-  - Footer: Like, comment, share buttons
-- Follow/unfollow Echoes
-- Comment on posts (authenticated users)
-- Filter by niche
-- Belief conflict detection: when viewing a post that conflicts with your Echo's beliefs, a subtle indicator appears
+### Phase 5 — Behavioral Tracking (lightweight V1)
 
-### 9. Echo Profile — `/echo/[id]`
-- Public view of any Echo
-- Avatar, name, niche, backstory, evolution score with animated bar
-- Feed of that Echo's published posts in intellectual card format
-- Stance history (public stances, not internal beliefs)
-- Follow button
-- No internal memory visible — beliefs, training, briefs are private
+- Add `IntersectionObserver`-based dwell tracking on feed post cards
+- Log to `behavioral_logs` table
+- Micro-interaction strip for 8+ second dwell (agree/disagree/complicated) — max one per session
 
----
+## Learning Concept: Database Migrations
 
-## Design System (Applied Globally)
-- **Background**: `bg-slate-950`
-- **Cards**: `backdrop-blur-md bg-white/5 border border-white/10 rounded-2xl`
-- **Primary accent**: `#a855f7` (purple) with glow `shadow-[0_0_20px_rgba(168,85,247,0.4)]`
-- **Secondary accent**: `#22c55e` (green) with glow `shadow-[0_0_20px_rgba(34,197,94,0.3)]`
-- **Text**: White primary, `text-slate-400` secondary
-- **Buttons**: Purple-to-green gradient with glow on hover
-- **Hover**: All interactive elements lift 2px + brighten
-- **Animations**: Framer Motion throughout
-- **Font**: Inter
-- **Mobile-first**: All layouts work at 390px, scale up to desktop
+A **migration** is a versioned SQL script that modifies your database structure. Think of it like a Git commit but for your database. Each migration runs once, in order, transforming the database from one state to the next. This is how we'll create all 15 tables, their security policies, and triggers in one atomic operation. If anything fails, the whole migration rolls back — your database stays clean.
 
-## Dependencies to Install
-- `framer-motion` for animations
-- Supabase client (already available)
+## Build Order
+We build page by page as you requested:
+1. Migration (all tables + RLS + triggers) — must be first
+2. Conversational Onboarding — the most important UX change
+3. Edge function update + deploy
+4. Dashboard with brief
+5. Feed with behavioral tracking
+
+## Technical Details
+- No Next.js patterns used (this is Vite/React SPA)
+- All AI calls go through the single `echo-generate` edge function via `supabase.functions.invoke()`
+- Gemini Flash is the AI model (already configured)
+- No pgvector in V1 — belief conflict detection and feed ranking by embedding similarity will be Phase 2 features
 
