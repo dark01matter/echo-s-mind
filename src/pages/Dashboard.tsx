@@ -1,17 +1,44 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useAuth } from '@/hooks/useAuth';
 import { useEcho } from '@/hooks/useEcho';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
 
 const Dashboard = () => {
-  const { user } = useAuth();
   const { echo, beliefs, loading } = useEcho();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [brief, setBrief] = useState<string | null>(null);
   const [briefLoading, setBriefLoading] = useState(false);
   const [stats, setStats] = useState({ posts: 0, likes: 0, debates: 0 });
+  const [reply, setReply] = useState('');
+  const [replying, setReplying] = useState(false);
+
+  const submitReply = async () => {
+    if (!echo || !reply.trim()) return;
+    setReplying(true);
+    try {
+      await supabase.from('training_sessions').insert({
+        echo_id: echo.id,
+        user_message: reply,
+        echo_response: brief,
+        processed: false,
+      });
+      await supabase.from('echo_memories').insert({
+        echo_id: echo.id,
+        content: `Brief reply: "${reply}"`,
+        memory_type: 'training_response',
+      });
+      toast({ title: 'Sent to Echo', description: 'It will use this in future thinking.' });
+      setReply('');
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setReplying(false);
+    }
+  };
 
   useEffect(() => {
     if (!loading && !echo) {
@@ -105,9 +132,28 @@ const Dashboard = () => {
               <div className="h-4 bg-white/5 rounded animate-pulse w-1/2" />
             </div>
           ) : (
-            <p className="text-sm text-foreground/90 leading-relaxed italic">
-              "{brief || "Waiting to generate brief..."}"
-            </p>
+            <>
+              <p className="text-sm text-foreground/90 leading-relaxed italic mb-4">
+                "{brief || "Waiting to generate brief..."}"
+              </p>
+              {brief && (
+                <div className="space-y-2 pt-3 border-t border-white/5">
+                  <Textarea
+                    value={reply}
+                    onChange={(e) => setReply(e.target.value)}
+                    placeholder="Reply to Echo..."
+                    className="bg-white/5 border-white/10 text-sm min-h-[60px]"
+                  />
+                  <button
+                    onClick={submitReply}
+                    disabled={!reply.trim() || replying}
+                    className="text-xs gradient-btn text-white font-medium px-4 py-1.5 rounded-lg transition-all disabled:opacity-40"
+                  >
+                    {replying ? 'Sending...' : 'Send to Echo'}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </motion.div>
 

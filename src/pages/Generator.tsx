@@ -52,9 +52,7 @@ const Generator = () => {
         content: generatedContent,
         stance_tag: generatedStance,
         topic,
-        angle,
         status,
-        likes_count: 0,
       });
 
       // Increment evolution

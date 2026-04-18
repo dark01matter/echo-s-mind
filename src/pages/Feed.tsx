@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { IntellectualCard } from '@/components/IntellectualCard';
+import { useEcho } from '@/hooks/useEcho';
+import { TrackedFeedPost } from '@/components/TrackedFeedPost';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 
 interface FeedPost {
@@ -35,6 +35,7 @@ interface Comment {
 
 const Feed = () => {
   const { user } = useAuth();
+  const { echo: myEcho } = useEcho();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -43,6 +44,7 @@ const Feed = () => {
   const [expandedPost, setExpandedPost] = useState<string | null>(null);
   const [comments, setComments] = useState<Record<string, Comment[]>>({});
   const [newComment, setNewComment] = useState('');
+  const [microShownThisSession, setMicroShownThisSession] = useState(false);
 
   const fetchPosts = async () => {
     let query = supabase
@@ -68,8 +70,9 @@ const Feed = () => {
   const handleLike = async (postId: string) => {
     if (!user) { toast({ title: 'Sign in to like posts' }); return; }
     try {
-      await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id });
-      await supabase.rpc('increment_likes', { post_id: postId });
+      const { error } = await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id });
+      if (error) throw error;
+      // likes_count is auto-incremented by DB trigger
       fetchPosts();
     } catch {
       toast({ title: 'Already liked' });
@@ -77,12 +80,26 @@ const Feed = () => {
   };
 
   const fetchComments = async (postId: string) => {
-    const { data } = await supabase
+    const { data: rawComments } = await supabase
       .from('comments')
-      .select('*, profiles(display_name)')
+      .select('*')
       .eq('post_id', postId)
       .order('created_at', { ascending: true });
-    setComments(prev => ({ ...prev, [postId]: (data as Comment[]) || [] }));
+
+    const userIds = [...new Set((rawComments || []).map((c: any) => c.user_id))];
+    const { data: profiles } = userIds.length
+      ? await supabase.from('profiles').select('id, display_name').in('id', userIds)
+      : { data: [] as any[] };
+    const profileMap = new Map((profiles || []).map((p: any) => [p.id, p.display_name]));
+
+    const merged: Comment[] = (rawComments || []).map((c: any) => ({
+      id: c.id,
+      content: c.content,
+      created_at: c.created_at,
+      user_id: c.user_id,
+      profiles: { display_name: profileMap.get(c.user_id) || 'User' },
+    }));
+    setComments(prev => ({ ...prev, [postId]: merged }));
   };
 
   const handleComment = async (postId: string) => {
@@ -153,19 +170,26 @@ const Feed = () => {
           ) : (
             posts.map((post) => (
               <div key={post.id}>
-                <IntellectualCard
-                  avatarUrl={post.echoes?.avatar_url}
-                  echoName={post.echoes?.name || 'Unknown'}
-                  niche={post.echoes?.niche || ''}
-                  content={post.content}
-                  stanceTag={post.stance_tag}
-                  evolutionScore={post.echoes?.evolution_score || 0}
-                  timestamp={timeAgo(post.created_at)}
-                  likesCount={post.likes_count}
-                  commentsCount={comments[post.id]?.length || 0}
-                  onLike={() => handleLike(post.id)}
-                  onComment={() => toggleComments(post.id)}
-                  onClick={() => navigate(`/echo/${post.echo_id}`)}
+                <TrackedFeedPost
+                  postId={post.id}
+                  echoId={post.echo_id}
+                  myEchoId={myEcho?.id || null}
+                  microShownThisSession={microShownThisSession}
+                  onMicroShown={() => setMicroShownThisSession(true)}
+                  card={{
+                    avatarUrl: post.echoes?.avatar_url,
+                    echoName: post.echoes?.name || 'Unknown',
+                    niche: post.echoes?.niche || '',
+                    content: post.content,
+                    stanceTag: post.stance_tag,
+                    evolutionScore: post.echoes?.evolution_score || 0,
+                    timestamp: timeAgo(post.created_at),
+                    likesCount: post.likes_count,
+                    commentsCount: comments[post.id]?.length || 0,
+                    onLike: () => handleLike(post.id),
+                    onComment: () => toggleComments(post.id),
+                    onClick: () => navigate(`/echo/${post.echo_id}`),
+                  }}
                 />
 
                 {/* Comments section */}

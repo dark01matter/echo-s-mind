@@ -14,7 +14,584 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      behavioral_logs: {
+        Row: {
+          created_at: string
+          dwell_time_ms: number
+          echo_id: string
+          id: string
+          interaction_type: string
+          post_id: string
+        }
+        Insert: {
+          created_at?: string
+          dwell_time_ms?: number
+          echo_id: string
+          id?: string
+          interaction_type?: string
+          post_id: string
+        }
+        Update: {
+          created_at?: string
+          dwell_time_ms?: number
+          echo_id?: string
+          id?: string
+          interaction_type?: string
+          post_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "behavioral_logs_echo_id_fkey"
+            columns: ["echo_id"]
+            isOneToOne: false
+            referencedRelation: "echoes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "behavioral_logs_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      comments: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          post_id: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          post_id: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          post_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comments_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      echo_beliefs: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          echo_id: string
+          id: string
+          is_active: boolean
+          position: string
+          reasoning: string | null
+          source: string
+          strength: number
+          topic: string
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          echo_id: string
+          id?: string
+          is_active?: boolean
+          position: string
+          reasoning?: string | null
+          source?: string
+          strength?: number
+          topic: string
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          echo_id?: string
+          id?: string
+          is_active?: boolean
+          position?: string
+          reasoning?: string | null
+          source?: string
+          strength?: number
+          topic?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "echo_beliefs_echo_id_fkey"
+            columns: ["echo_id"]
+            isOneToOne: false
+            referencedRelation: "echoes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      echo_briefs: {
+        Row: {
+          brief_content: string
+          echo_id: string
+          generated_at: string
+          id: string
+          seen_by_user: boolean
+        }
+        Insert: {
+          brief_content: string
+          echo_id: string
+          generated_at?: string
+          id?: string
+          seen_by_user?: boolean
+        }
+        Update: {
+          brief_content?: string
+          echo_id?: string
+          generated_at?: string
+          id?: string
+          seen_by_user?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "echo_briefs_echo_id_fkey"
+            columns: ["echo_id"]
+            isOneToOne: false
+            referencedRelation: "echoes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      echo_memories: {
+        Row: {
+          content: string
+          created_at: string
+          echo_id: string
+          id: string
+          memory_type: string
+          related_echo_id: string | null
+          related_post_id: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          echo_id: string
+          id?: string
+          memory_type: string
+          related_echo_id?: string | null
+          related_post_id?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          echo_id?: string
+          id?: string
+          memory_type?: string
+          related_echo_id?: string | null
+          related_post_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "echo_memories_echo_id_fkey"
+            columns: ["echo_id"]
+            isOneToOne: false
+            referencedRelation: "echoes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "echo_memories_related_echo_id_fkey"
+            columns: ["related_echo_id"]
+            isOneToOne: false
+            referencedRelation: "echoes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "echo_memories_related_post_id_fkey"
+            columns: ["related_post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      echo_relationships: {
+        Row: {
+          echo_id: string
+          id: string
+          last_interaction_at: string | null
+          last_interaction_summary: string | null
+          other_echo_id: string
+          relationship_state: string
+          updated_at: string
+        }
+        Insert: {
+          echo_id: string
+          id?: string
+          last_interaction_at?: string | null
+          last_interaction_summary?: string | null
+          other_echo_id: string
+          relationship_state?: string
+          updated_at?: string
+        }
+        Update: {
+          echo_id?: string
+          id?: string
+          last_interaction_at?: string | null
+          last_interaction_summary?: string | null
+          other_echo_id?: string
+          relationship_state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "echo_relationships_echo_id_fkey"
+            columns: ["echo_id"]
+            isOneToOne: false
+            referencedRelation: "echoes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "echo_relationships_other_echo_id_fkey"
+            columns: ["other_echo_id"]
+            isOneToOne: false
+            referencedRelation: "echoes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      echo_rules: {
+        Row: {
+          content: string
+          created_at: string
+          echo_id: string
+          id: string
+          rule_type: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          echo_id: string
+          id?: string
+          rule_type?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          echo_id?: string
+          id?: string
+          rule_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "echo_rules_echo_id_fkey"
+            columns: ["echo_id"]
+            isOneToOne: false
+            referencedRelation: "echoes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      echo_stances: {
+        Row: {
+          created_at: string
+          current_position: string
+          echo_id: string
+          expires_at: string
+          id: string
+          superseded_by: string | null
+          topic: string
+        }
+        Insert: {
+          created_at?: string
+          current_position: string
+          echo_id: string
+          expires_at?: string
+          id?: string
+          superseded_by?: string | null
+          topic: string
+        }
+        Update: {
+          created_at?: string
+          current_position?: string
+          echo_id?: string
+          expires_at?: string
+          id?: string
+          superseded_by?: string | null
+          topic?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "echo_stances_echo_id_fkey"
+            columns: ["echo_id"]
+            isOneToOne: false
+            referencedRelation: "echoes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "echo_stances_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "echo_stances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      echoes: {
+        Row: {
+          avatar_url: string | null
+          backstory: string | null
+          communication_style: string | null
+          created_at: string
+          desired_reader_feeling: string | null
+          evolution_score: number
+          id: string
+          name: string
+          niche: string
+          tone: string | null
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          backstory?: string | null
+          communication_style?: string | null
+          created_at?: string
+          desired_reader_feeling?: string | null
+          evolution_score?: number
+          id?: string
+          name: string
+          niche: string
+          tone?: string | null
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          backstory?: string | null
+          communication_style?: string | null
+          created_at?: string
+          desired_reader_feeling?: string | null
+          evolution_score?: number
+          id?: string
+          name?: string
+          niche?: string
+          tone?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      micro_interactions: {
+        Row: {
+          comment: string | null
+          created_at: string
+          echo_id: string
+          id: string
+          post_id: string
+          response: string
+        }
+        Insert: {
+          comment?: string | null
+          created_at?: string
+          echo_id: string
+          id?: string
+          post_id: string
+          response: string
+        }
+        Update: {
+          comment?: string | null
+          created_at?: string
+          echo_id?: string
+          id?: string
+          post_id?: string
+          response?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "micro_interactions_echo_id_fkey"
+            columns: ["echo_id"]
+            isOneToOne: false
+            referencedRelation: "echoes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "micro_interactions_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_responses: {
+        Row: {
+          answer_text: string
+          created_at: string
+          echo_id: string
+          id: string
+          question_number: number
+          question_text: string
+        }
+        Insert: {
+          answer_text: string
+          created_at?: string
+          echo_id: string
+          id?: string
+          question_number: number
+          question_text: string
+        }
+        Update: {
+          answer_text?: string
+          created_at?: string
+          echo_id?: string
+          id?: string
+          question_number?: number
+          question_text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_responses_echo_id_fkey"
+            columns: ["echo_id"]
+            isOneToOne: false
+            referencedRelation: "echoes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      post_likes: {
+        Row: {
+          created_at: string
+          id: string
+          post_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          post_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          post_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_likes_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      posts: {
+        Row: {
+          comments_count: number
+          content: string
+          created_at: string
+          echo_id: string
+          id: string
+          likes_count: number
+          stance_tag: string | null
+          status: string
+          temperature_score: number
+          topic: string | null
+        }
+        Insert: {
+          comments_count?: number
+          content: string
+          created_at?: string
+          echo_id: string
+          id?: string
+          likes_count?: number
+          stance_tag?: string | null
+          status?: string
+          temperature_score?: number
+          topic?: string | null
+        }
+        Update: {
+          comments_count?: number
+          content?: string
+          created_at?: string
+          echo_id?: string
+          id?: string
+          likes_count?: number
+          stance_tag?: string | null
+          status?: string
+          temperature_score?: number
+          topic?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "posts_echo_id_fkey"
+            columns: ["echo_id"]
+            isOneToOne: false
+            referencedRelation: "echoes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          display_name: string | null
+          id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
+      training_sessions: {
+        Row: {
+          created_at: string
+          echo_id: string
+          echo_response: string | null
+          id: string
+          processed: boolean
+          user_message: string | null
+        }
+        Insert: {
+          created_at?: string
+          echo_id: string
+          echo_response?: string | null
+          id?: string
+          processed?: boolean
+          user_message?: string | null
+        }
+        Update: {
+          created_at?: string
+          echo_id?: string
+          echo_response?: string | null
+          id?: string
+          processed?: boolean
+          user_message?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_sessions_echo_id_fkey"
+            columns: ["echo_id"]
+            isOneToOne: false
+            referencedRelation: "echoes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
