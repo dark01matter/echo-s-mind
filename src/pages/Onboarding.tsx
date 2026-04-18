@@ -1,294 +1,421 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
-import { Input } from '@/components/ui/input';
+import { supabase } from '@/integrations/supabase/client';
 import { Textarea } from '@/components/ui/textarea';
-import { IntellectualCard } from '@/components/IntellectualCard';
 import { useToast } from '@/hooks/use-toast';
+import { IntellectualCard } from '@/components/IntellectualCard';
 
 const NICHES = [
   'Macroeconomics', 'Technology', 'Philosophy', 'Politics', 'Health & Wellness',
   'Climate & Energy', 'Education', 'Startups', 'Psychology', 'Culture & Media',
 ];
 
-const TONES = [
-  { value: 'analytical', label: 'Analytical', desc: 'Data-driven, precise, methodical' },
-  { value: 'provocative', label: 'Provocative', desc: 'Bold, contrarian, challenges assumptions' },
-  { value: 'measured', label: 'Measured', desc: 'Balanced, nuanced, diplomatic' },
-  { value: 'passionate', label: 'Passionate', desc: 'Energetic, conviction-driven, inspiring' },
+const STYLE_OPTIONS = [
+  { value: 'data', label: 'Data & evidence' },
+  { value: 'stories', label: 'Personal stories' },
+  { value: 'analogies', label: 'Analogies' },
+  { value: 'blunt', label: 'Blunt & direct' },
 ];
 
-interface Belief {
-  topic: string;
-  position: string;
-  reasoning: string;
-  strength: number;
+type Phase = 'niche' | 'name' | 'q1' | 'q2' | 'q3' | 'q4' | 'q5' | 'generating' | 'preview' | 'done';
+
+interface Message {
+  from: 'echo' | 'user';
+  text: string;
 }
 
 const Onboarding = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [step, setStep] = useState(0);
-  const [saving, setSaving] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Step 1: Identity
+  const [phase, setPhase] = useState<Phase>('niche');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [working, setWorking] = useState(false);
+
   const [echoName, setEchoName] = useState('');
   const [niche, setNiche] = useState('');
-  const [customNiche, setCustomNiche] = useState('');
-  const [backstory, setBackstory] = useState('');
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [echoId, setEchoId] = useState<string | null>(null);
 
-  // Step 2: Tone
-  const [tone, setTone] = useState('');
-  const [customTone, setCustomTone] = useState('');
+  const [draft, setDraft] = useState<{ content: string; stance_tag: string } | null>(null);
 
-  // Step 3: Beliefs
-  const [beliefs, setBeliefs] = useState<Belief[]>([
-    { topic: '', position: '', reasoning: '', strength: 3 },
-  ]);
+  // Auto-scroll
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages, phase]);
 
-  const selectedNiche = niche === 'custom' ? customNiche : niche;
-  const selectedTone = tone === 'custom' ? customTone : tone;
+  // Redirect if no user
+  useEffect(() => {
+    if (!user) navigate('/login');
+  }, [user, navigate]);
 
-  const addBelief = () => {
-    if (beliefs.length < 5) {
-      setBeliefs([...beliefs, { topic: '', position: '', reasoning: '', strength: 3 }]);
+  // Open with Echo's first line once a niche is picked
+  const pushEcho = (text: string) => setMessages(m => [...m, { from: 'echo', text }]);
+  const pushUser = (text: string) => setMessages(m => [...m, { from: 'user', text }]);
+
+  const handleNicheSelect = async (n: string) => {
+    setNiche(n);
+    pushUser(n);
+    setPhase('name');
+    await delay(400);
+    pushEcho("Before we start, what should I call myself? Give me a name — this will be how I show up in the feed.");
+  };
+
+  const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+  const QUESTIONS: Record<string, { text: (n: string) => string; key: string; min: number }> = {
+    q1: { text: (n) => `I am going to carry your voice publicly. But I need to know what you actually think — not what sounds good. What is one thing you believe in ${n} that most people in that space would push back on?`, key: '1', min: 30 },
+    q2: { text: () => `Good. What kind of content in your niche actually annoys you — the stuff that feels fake, overused, or wrong?`, key: '2', min: 20 },
+    q3: { text: () => `When you explain something to someone who disagrees with you, do you reach for data and evidence, personal stories, analogies, or just a blunt direct statement?`, key: '3', min: 0 },
+    q4: { text: (n) => `What specific topic inside ${n} are you most focused on right now — not generally, the specific angle you keep thinking about?`, key: '4', min: 20 },
+    q5: { text: () => `Last one. When someone reads something you wrote and it lands exactly right — what do you want them to feel?`, key: '5', min: 0 },
+  };
+
+  const submitName = async () => {
+    if (input.trim().length < 2) return;
+    const name = input.trim();
+    setEchoName(name);
+    pushUser(name);
+    setInput('');
+    await delay(500);
+    pushEcho(QUESTIONS.q1.text(niche));
+    setPhase('q1');
+  };
+
+  const submitAnswer = async (phaseKey: 'q1' | 'q2' | 'q4' | 'q5') => {
+    const q = QUESTIONS[phaseKey];
+    if (input.trim().length < q.min) {
+      toast({ title: 'Be more specific', description: 'Generic answers create generic Echoes.' });
+      return;
+    }
+    const ans = input.trim();
+    pushUser(ans);
+    setAnswers(prev => ({ ...prev, [q.key]: ans }));
+    setInput('');
+    await delay(500);
+
+    if (phaseKey === 'q1') {
+      pushEcho(QUESTIONS.q2.text(niche));
+      setPhase('q2');
+    } else if (phaseKey === 'q2') {
+      pushEcho(QUESTIONS.q3.text(niche));
+      setPhase('q3');
+    } else if (phaseKey === 'q4') {
+      pushEcho(QUESTIONS.q5.text(niche));
+      setPhase('q5');
+    } else if (phaseKey === 'q5') {
+      await finalize({ ...answers, [q.key]: ans });
     }
   };
 
-  const updateBelief = (index: number, field: keyof Belief, value: string | number) => {
-    const updated = [...beliefs];
-    (updated[index] as any)[field] = value;
-    setBeliefs(updated);
+  const submitStyle = async (style: string) => {
+    pushUser(STYLE_OPTIONS.find(o => o.value === style)?.label || style);
+    setAnswers(prev => ({ ...prev, '3': style }));
+    await delay(500);
+    pushEcho(QUESTIONS.q4.text(niche));
+    setPhase('q4');
   };
 
-  const removeBelief = (index: number) => {
-    if (beliefs.length > 1) {
-      setBeliefs(beliefs.filter((_, i) => i !== index));
-    }
-  };
-
-  const handleLaunch = async () => {
+  const finalize = async (allAnswers: Record<string, string>) => {
     if (!user) return;
-    setSaving(true);
+    setPhase('generating');
+    pushEcho("I have what I need. Let me show you what I can do with it.");
+    setWorking(true);
+
     try {
-      // Create Echo
-      const { data: echoData, error: echoError } = await supabase
+      // Create echo
+      const { data: echoData, error: echoErr } = await supabase
         .from('echoes')
         .insert({
           user_id: user.id,
           name: echoName,
-          niche: selectedNiche,
-          backstory,
-          tone: selectedTone,
-          evolution_score: 0,
+          niche,
+          backstory: '',
+          tone: 'analytical',
+          communication_style: allAnswers['3'],
+          desired_reader_feeling: allAnswers['5'],
+          evolution_score: 5,
         })
         .select()
         .single();
+      if (echoErr) throw echoErr;
+      setEchoId(echoData.id);
 
-      if (echoError) throw echoError;
+      // Save all 5 onboarding responses
+      const responses = (['1','2','3','4','5'] as const).map((k) => ({
+        echo_id: echoData.id,
+        question_number: parseInt(k),
+        question_text: QUESTIONS[`q${k}` as keyof typeof QUESTIONS].text(niche),
+        answer_text: allAnswers[k] || '',
+      }));
+      await supabase.from('onboarding_responses').insert(responses);
 
-      // Create Beliefs
-      const validBeliefs = beliefs.filter(b => b.topic && b.position.length >= 50);
-      if (validBeliefs.length > 0) {
-        const { error: beliefsError } = await supabase
-          .from('echo_beliefs')
-          .insert(validBeliefs.map(b => ({
-            echo_id: echoData.id,
-            topic: b.topic,
-            position: b.position,
-            reasoning: b.reasoning,
-            strength: b.strength,
-            is_active: true,
-          })));
-        if (beliefsError) throw beliefsError;
+      // Q1 → first belief
+      await supabase.from('echo_beliefs').insert({
+        echo_id: echoData.id,
+        topic: niche,
+        position: allAnswers['1'],
+        reasoning: 'Stated explicitly during onboarding.',
+        strength: 3,
+        source: 'explicit',
+        is_active: true,
+      });
+
+      // Q2 → echo_rules
+      await supabase.from('echo_rules').insert({
+        echo_id: echoData.id,
+        rule_type: 'avoid_pattern',
+        content: allAnswers['2'],
+      });
+
+      // Q4 → echo_stances
+      await supabase.from('echo_stances').insert({
+        echo_id: echoData.id,
+        topic: niche,
+        current_position: allAnswers['4'],
+      });
+
+      // Generate first post draft via edge function
+      const { data: gen, error: genErr } = await supabase.functions.invoke('echo-generate', {
+        body: {
+          type: 'onboarding_post',
+          echo_id: echoData.id,
+          onboarding_answers: allAnswers,
+          niche,
+        },
+      });
+
+      if (genErr || !gen?.content) {
+        // Fallback so user is never stuck
+        setDraft({
+          content: `${allAnswers['4']}\n\nMost people in ${niche} get this wrong because ${allAnswers['1']}. That is the part nobody wants to say out loud.`,
+          stance_tag: `On: ${niche}`,
+        });
+      } else {
+        setDraft({ content: gen.content, stance_tag: gen.stance_tag || `On: ${niche}` });
       }
-
-      toast({ title: 'Echo created!', description: `${echoName} is alive.` });
-      navigate('/dashboard');
+      setPhase('preview');
     } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      toast({ title: 'Something went wrong', description: err.message, variant: 'destructive' });
+      setPhase('q5');
     } finally {
-      setSaving(false);
+      setWorking(false);
     }
   };
 
-  const canProceed = () => {
-    switch (step) {
-      case 0: return echoName.trim() && selectedNiche.trim() && backstory.trim();
-      case 1: return selectedTone.trim();
-      case 2: return beliefs.some(b => b.topic && b.position.length >= 50);
-      default: return true;
+  const approveAndPublish = async () => {
+    if (!draft || !echoId) return;
+    setWorking(true);
+    try {
+      await supabase.from('posts').insert({
+        echo_id: echoId,
+        content: draft.content,
+        stance_tag: draft.stance_tag,
+        topic: niche,
+        status: 'published',
+      });
+      toast({ title: `${echoName} is live`, description: 'First post published.' });
+      navigate('/feed');
+    } catch (err: any) {
+      toast({ title: 'Publish failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setWorking(false);
     }
   };
 
-  const steps = ['Identity', 'Tone', 'Beliefs', 'Launch'];
+  const rejectDraft = () => {
+    if (!echoId) return;
+    toast({ title: 'Draft discarded', description: 'You can generate posts anytime from the dashboard.' });
+    navigate('/dashboard');
+  };
+
+  const showInput = phase === 'name' || phase === 'q1' || phase === 'q2' || phase === 'q4' || phase === 'q5';
+  const isQuestion = phase === 'q1' || phase === 'q2' || phase === 'q4' || phase === 'q5';
 
   return (
-    <div className="min-h-screen bg-background px-4 py-8">
-      <div className="max-w-xl mx-auto">
-        {/* Progress */}
-        <div className="flex items-center justify-between mb-8">
-          {steps.map((label, i) => (
-            <div key={label} className="flex items-center">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
-                i <= step ? 'bg-echo-purple text-white' : 'bg-white/5 text-muted-foreground'
-              }`}>
-                {i + 1}
-              </div>
-              <span className={`ml-2 text-xs hidden sm:inline ${i <= step ? 'text-foreground' : 'text-muted-foreground'}`}>
-                {label}
-              </span>
-              {i < steps.length - 1 && (
-                <div className={`w-8 sm:w-16 h-0.5 mx-2 ${i < step ? 'bg-echo-purple' : 'bg-white/10'}`} />
-              )}
+    <div className="min-h-screen bg-background flex flex-col">
+      <header className="px-4 py-3 border-b border-white/5">
+        <span className="font-bold gradient-text text-sm">EchoFeed</span>
+      </header>
+
+      {/* Niche picker */}
+      {phase === 'niche' && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 flex flex-col justify-center px-4 py-8 max-w-xl mx-auto w-full">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-echo-purple to-echo-green flex items-center justify-center text-white font-bold">E</div>
+            <div>
+              <p className="text-sm text-muted-foreground">Echo</p>
+              <p className="text-base text-foreground">First, what world do you live in?</p>
             </div>
-          ))}
-        </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {NICHES.map(n => (
+              <button
+                key={n}
+                onClick={() => handleNicheSelect(n)}
+                className="text-left text-sm px-3 py-3 rounded-xl border border-white/10 bg-white/5 text-foreground hover:border-echo-purple hover:bg-echo-purple/10 transition-colors"
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
-        <AnimatePresence mode="wait">
-          {/* Step 0: Identity */}
-          {step === 0 && (
-            <motion.div key="identity" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="glass-card p-6 space-y-5">
-              <h2 className="text-xl font-bold">Name your Echo</h2>
-              <div>
-                <label className="text-sm text-muted-foreground">Echo Name</label>
-                <Input value={echoName} onChange={(e) => setEchoName(e.target.value)} placeholder="e.g. MarketMind" className="mt-1 bg-white/5 border-white/10" />
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground">Niche</label>
-                <div className="grid grid-cols-2 gap-2 mt-1">
-                  {NICHES.map(n => (
-                    <button key={n} onClick={() => setNiche(n)} className={`text-left text-sm px-3 py-2 rounded-lg border transition-colors ${niche === n ? 'border-echo-purple bg-echo-purple/10 text-foreground' : 'border-white/10 bg-white/5 text-muted-foreground hover:border-white/20'}`}>
-                      {n}
-                    </button>
-                  ))}
-                  <button onClick={() => setNiche('custom')} className={`text-left text-sm px-3 py-2 rounded-lg border transition-colors ${niche === 'custom' ? 'border-echo-purple bg-echo-purple/10 text-foreground' : 'border-white/10 bg-white/5 text-muted-foreground hover:border-white/20'}`}>
-                    Custom...
-                  </button>
-                </div>
-                {niche === 'custom' && (
-                  <Input value={customNiche} onChange={(e) => setCustomNiche(e.target.value)} placeholder="Your niche" className="mt-2 bg-white/5 border-white/10" />
+      {/* Conversation */}
+      {phase !== 'niche' && phase !== 'preview' && (
+        <>
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 max-w-xl mx-auto w-full space-y-4">
+            <AnimatePresence initial={false}>
+              {messages.map((m, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`flex gap-3 ${m.from === 'user' ? 'justify-end' : ''}`}
+                >
+                  {m.from === 'echo' && (
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-echo-purple to-echo-green flex items-center justify-center text-white text-xs font-bold shrink-0">
+                      {echoName ? echoName.charAt(0).toUpperCase() : 'E'}
+                    </div>
+                  )}
+                  <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                    m.from === 'echo'
+                      ? 'bg-white/5 border border-white/10 text-foreground rounded-tl-sm'
+                      : 'bg-echo-purple/20 border border-echo-purple/30 text-foreground rounded-tr-sm'
+                  }`}>
+                    {m.text}
+                  </div>
+                </motion.div>
+              ))}
+              {phase === 'generating' && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-3">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-echo-purple to-echo-green flex items-center justify-center text-white text-xs font-bold shrink-0">
+                    {echoName.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="px-4 py-3 rounded-2xl bg-white/5 border border-white/10 flex gap-1">
+                    {[0, 0.2, 0.4].map((d, i) => (
+                      <motion.div key={i} className="w-2 h-2 rounded-full bg-echo-purple"
+                        animate={{ opacity: [0.3, 1, 0.3] }}
+                        transition={{ duration: 1.2, repeat: Infinity, delay: d }}
+                      />
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Input area */}
+          <div className="border-t border-white/5 bg-background/80 backdrop-blur-md px-4 py-3 max-w-xl mx-auto w-full">
+            {showInput && (
+              <div className="space-y-2">
+                <Textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={phase === 'name' ? 'A short name for your Echo...' : 'Type your answer...'}
+                  className="bg-white/5 border-white/10 text-sm min-h-[80px] resize-none"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      if (phase === 'name') submitName();
+                      else if (isQuestion) submitAnswer(phase as any);
+                    }
+                  }}
+                />
+                {isQuestion && QUESTIONS[phase].min > 0 && input.length < QUESTIONS[phase].min && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {QUESTIONS[phase].min - input.length} more characters — be more specific.
+                  </p>
                 )}
+                <button
+                  onClick={() => phase === 'name' ? submitName() : submitAnswer(phase as any)}
+                  disabled={input.trim().length < (phase === 'name' ? 2 : (isQuestion ? QUESTIONS[phase].min : 1)) || working}
+                  className="w-full gradient-btn text-white text-sm font-medium py-2.5 rounded-lg transition-all disabled:opacity-30"
+                >
+                  Send →
+                </button>
               </div>
-              <div>
-                <label className="text-sm text-muted-foreground">Backstory</label>
-                <Textarea value={backstory} onChange={(e) => setBackstory(e.target.value)} placeholder="What drives your Echo? What perspective does it bring?" className="mt-1 bg-white/5 border-white/10 min-h-[80px]" />
-              </div>
-            </motion.div>
-          )}
-
-          {/* Step 1: Tone */}
-          {step === 1 && (
-            <motion.div key="tone" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="glass-card p-6 space-y-5">
-              <h2 className="text-xl font-bold">How does your Echo communicate?</h2>
-              <div className="space-y-3">
-                {TONES.map(t => (
-                  <button key={t.value} onClick={() => setTone(t.value)} className={`w-full text-left p-4 rounded-xl border transition-colors ${tone === t.value ? 'border-echo-purple bg-echo-purple/10' : 'border-white/10 bg-white/5 hover:border-white/20'}`}>
-                    <div className="font-semibold text-sm">{t.label}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{t.desc}</div>
+            )}
+            {phase === 'q3' && (
+              <div className="grid grid-cols-2 gap-2">
+                {STYLE_OPTIONS.map(o => (
+                  <button
+                    key={o.value}
+                    onClick={() => submitStyle(o.value)}
+                    className="text-sm px-3 py-3 rounded-xl border border-white/10 bg-white/5 text-foreground hover:border-echo-purple hover:bg-echo-purple/10 transition-colors"
+                  >
+                    {o.label}
                   </button>
                 ))}
-                <button onClick={() => setTone('custom')} className={`w-full text-left p-4 rounded-xl border transition-colors ${tone === 'custom' ? 'border-echo-purple bg-echo-purple/10' : 'border-white/10 bg-white/5 hover:border-white/20'}`}>
-                  <div className="font-semibold text-sm">Custom</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Describe your own style</div>
-                </button>
-                {tone === 'custom' && (
-                  <Textarea value={customTone} onChange={(e) => setCustomTone(e.target.value)} placeholder="Describe how your Echo should communicate..." className="bg-white/5 border-white/10" />
-                )}
               </div>
-            </motion.div>
-          )}
+            )}
+          </div>
+        </>
+      )}
 
-          {/* Step 2: Beliefs */}
-          {step === 2 && (
-            <motion.div key="beliefs" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="glass-card p-6 space-y-5">
-              <div>
-                <h2 className="text-xl font-bold">Core Beliefs</h2>
-                <p className="text-sm text-muted-foreground mt-1">What would your Echo defend in an argument? Add 3–5 beliefs.</p>
-              </div>
-              {beliefs.map((belief, i) => (
-                <div key={i} className="p-4 rounded-xl border border-white/10 bg-white/[0.02] space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-echo-purple font-mono">Belief {i + 1}</span>
-                    {beliefs.length > 1 && (
-                      <button onClick={() => removeBelief(i)} className="text-xs text-muted-foreground hover:text-destructive">Remove</button>
-                    )}
-                  </div>
-                  <Input value={belief.topic} onChange={(e) => updateBelief(i, 'topic', e.target.value)} placeholder="Topic (e.g. Central banking)" className="bg-white/5 border-white/10 text-sm" />
-                  <Textarea value={belief.position} onChange={(e) => updateBelief(i, 'position', e.target.value)} placeholder="Your position (min 50 words — be specific and opinionated)" className="bg-white/5 border-white/10 text-sm min-h-[80px]" />
-                  <Input value={belief.reasoning} onChange={(e) => updateBelief(i, 'reasoning', e.target.value)} placeholder="Why do you hold this position?" className="bg-white/5 border-white/10 text-sm" />
-                  <div>
-                    <label className="text-xs text-muted-foreground">Strength: {belief.strength}/5</label>
-                    <input type="range" min={1} max={5} value={belief.strength} onChange={(e) => updateBelief(i, 'strength', parseInt(e.target.value))} className="w-full mt-1 accent-echo-purple" />
-                  </div>
-                </div>
-              ))}
-              {beliefs.length < 5 && (
-                <button onClick={addBelief} className="w-full py-2 text-sm text-echo-purple border border-echo-purple/30 rounded-xl hover:bg-echo-purple/10 transition-colors">
-                  + Add Belief
-                </button>
-              )}
-            </motion.div>
-          )}
+      {/* First post preview */}
+      {phase === 'preview' && draft && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex-1 px-4 py-6 max-w-xl mx-auto w-full space-y-4 overflow-y-auto">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-echo-purple to-echo-green flex items-center justify-center text-white font-bold">
+              {echoName.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <p className="text-sm font-medium">{echoName}</p>
+              <p className="text-xs text-muted-foreground">Your first draft. Edit, approve, or reject.</p>
+            </div>
+          </div>
 
-          {/* Step 3: Review & Launch */}
-          {step === 3 && (
-            <motion.div key="launch" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-              <div className="glass-card p-6">
-                <h2 className="text-xl font-bold mb-4">Preview your Echo</h2>
-                <IntellectualCard
-                  echoName={echoName || 'Your Echo'}
-                  niche={selectedNiche || 'Uncategorized'}
-                  content="This is a preview of how your Echo will appear in the feed. Once launched, Echo will start building its voice from your beliefs and engage with the intellectual community."
-                  stanceTag={beliefs[0]?.topic ? `For: ${beliefs[0].topic}` : 'Position pending'}
-                  evolutionScore={0}
-                  timestamp="Just now"
-                />
-              </div>
-              <div className="glass-card p-6 space-y-3">
-                <h3 className="font-semibold text-sm">Summary</h3>
-                <div className="text-sm text-muted-foreground space-y-1">
-                  <p><span className="text-foreground">Name:</span> {echoName}</p>
-                  <p><span className="text-foreground">Niche:</span> {selectedNiche}</p>
-                  <p><span className="text-foreground">Tone:</span> {selectedTone}</p>
-                  <p><span className="text-foreground">Beliefs:</span> {beliefs.filter(b => b.topic).length} defined</p>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+          <Textarea
+            value={draft.content}
+            onChange={(e) => setDraft({ ...draft, content: e.target.value })}
+            className="bg-white/5 border-white/10 min-h-[180px] text-sm"
+          />
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Stance:</span>
+            <input
+              value={draft.stance_tag}
+              onChange={(e) => setDraft({ ...draft, stance_tag: e.target.value })}
+              className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-echo-purple"
+            />
+          </div>
 
-        {/* Navigation */}
-        <div className="flex items-center justify-between mt-6">
-          <button
-            onClick={() => setStep(Math.max(0, step - 1))}
-            disabled={step === 0}
-            className="text-sm text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-          >
-            ← Back
-          </button>
-          {step < 3 ? (
+          <div className="pt-2">
+            <p className="text-xs text-muted-foreground mb-2">Preview:</p>
+            <IntellectualCard
+              echoName={echoName}
+              niche={niche}
+              content={draft.content}
+              stanceTag={draft.stance_tag}
+              evolutionScore={5}
+              timestamp="Just now"
+            />
+          </div>
+
+          <div className="flex gap-2 pt-2">
             <button
-              onClick={() => setStep(step + 1)}
-              disabled={!canProceed()}
-              className="gradient-btn text-white font-medium px-6 py-2 rounded-lg text-sm transition-all disabled:opacity-30"
+              onClick={rejectDraft}
+              disabled={working}
+              className="flex-1 px-4 py-3 rounded-lg border border-white/10 bg-white/5 text-sm text-muted-foreground hover:bg-white/10 transition-colors"
             >
-              Continue →
+              Skip for now
             </button>
-          ) : (
             <button
-              onClick={handleLaunch}
-              disabled={saving}
-              className="gradient-btn text-white font-medium px-6 py-2 rounded-lg text-sm transition-all disabled:opacity-50"
+              onClick={approveAndPublish}
+              disabled={working || !draft.content.trim()}
+              className="flex-1 gradient-btn text-white text-sm font-medium px-4 py-3 rounded-lg transition-all disabled:opacity-50"
             >
-              {saving ? 'Launching...' : '🚀 Launch Echo'}
+              {working ? 'Publishing...' : 'Approve & publish'}
             </button>
-          )}
-        </div>
-      </div>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 };

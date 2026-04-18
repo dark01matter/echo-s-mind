@@ -12,7 +12,8 @@ serve(async (req) => {
   }
 
   try {
-    const { type, echo_id, topic, angle, post_content, comment_content } = await req.json();
+    const body = await req.json();
+    const { type, echo_id, topic, angle, post_content, comment_content, onboarding_answers, niche: nicheArg } = body;
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
@@ -21,64 +22,93 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch echo data
-    const { data: echo } = await supabase
-      .from("echoes")
-      .select("*")
-      .eq("id", echo_id)
-      .single();
+    // -------- ONBOARDING POST: special path that uses raw answers --------
+    if (type === "onboarding_post") {
+      const a = onboarding_answers || {};
+      const sysPrompt = `You are a brand-new AI Echo writing your very first public post on EchoFeed.
+Niche: ${nicheArg || "general"}.
+A real person just told you these things about themselves:
+- Belief most people would push back on: "${a["1"] || ""}"
+- Content style they hate: "${a["2"] || ""}"
+- How they argue: "${a["3"] || ""}"
+- What they keep thinking about right now: "${a["4"] || ""}"
+- How they want readers to feel: "${a["5"] || ""}"
 
+Write a single short post (under 200 words) that:
+- Sounds like that real person, not like AI.
+- Centers on what they keep thinking about (#4).
+- Carries their contrarian belief (#1) in some form.
+- Avoids the patterns they hate (#2).
+- Uses their argument style (#3).
+- Aims to make the reader feel (#5).
+
+Take a clear position. Be specific. No hedging. No "in conclusion".
+
+Reply ONLY as JSON: {"content": "the post", "stance_tag": "For: ... or Against: ... or On: ... in 4-7 words"}`;
+
+      const result = await callGemini(GEMINI_API_KEY, sysPrompt);
+      const parsed = parsePostJson(result, nicheArg || "this topic");
+      return json(parsed);
+    }
+
+    // -------- For all other types: load echo + memory layers --------
+    const { data: echo } = await supabase.from("echoes").select("*").eq("id", echo_id).single();
     if (!echo) throw new Error("Echo not found");
 
-    // Fetch all 4 memory layers
-    const [beliefsRes, stancesRes, memoriesRes, relationshipsRes] = await Promise.all([
-      supabase.from("echo_beliefs").select("*").eq("echo_id", echo_id).eq("is_active", true),
+    const [beliefsRes, stancesRes, memoriesRes, relationshipsRes, rulesRes] = await Promise.all([
+      supabase.from("echo_beliefs").select("*").eq("echo_id", echo_id).eq("is_active", true).order("strength", { ascending: false }),
       supabase.from("echo_stances").select("*").eq("echo_id", echo_id).gte("expires_at", new Date().toISOString()),
-      supabase.from("echo_memories").select("*").eq("echo_id", echo_id).order("created_at", { ascending: false }).limit(20),
+      supabase.from("echo_memories").select("*").eq("echo_id", echo_id).order("created_at", { ascending: false }).limit(10),
       supabase.from("echo_relationships").select("*, other_echo:echoes!echo_relationships_other_echo_id_fkey(name, niche)").eq("echo_id", echo_id),
+      supabase.from("echo_rules").select("*").eq("echo_id", echo_id),
     ]);
 
     const beliefs = beliefsRes.data || [];
     const stances = stancesRes.data || [];
     const memories = memoriesRes.data || [];
     const relationships = relationshipsRes.data || [];
+    const rules = rulesRes.data || [];
 
-    // Build memory context
     const beliefContext = beliefs.map((b: any) =>
-      `[BELIEF - ${b.topic}] Position (strength ${b.strength}/5): ${b.position} | Reasoning: ${b.reasoning}`
-    ).join("\n");
+      `[BELIEF on ${b.topic} | strength ${b.strength}/5] ${b.position}${b.reasoning ? ` — Reason: ${b.reasoning}` : ""}`
+    ).join("\n") || "No beliefs defined.";
 
     const stanceContext = stances.map((s: any) =>
-      `[STANCE - ${s.topic}] Current position: ${s.current_position}`
-    ).join("\n");
+      `[STANCE on ${s.topic}] ${s.current_position}`
+    ).join("\n") || "No active stances.";
 
-    const memoryContext = memories.slice(0, 10).map((m: any) =>
+    const memoryContext = memories.map((m: any) =>
       `[${m.memory_type.toUpperCase()}] ${m.content}`
-    ).join("\n");
+    ).join("\n") || "No recent memories.";
 
     const relationshipContext = relationships.map((r: any) =>
-      `[RELATIONSHIP with ${r.other_echo?.name || "Unknown"}] State: ${r.relationship_state} | Last interaction: ${r.last_interaction_summary}`
-    ).join("\n");
+      `[RELATION with ${r.other_echo?.name || "Unknown"} — ${r.relationship_state}] ${r.last_interaction_summary || ""}`
+    ).join("\n") || "No relationships.";
 
-    const fullContext = `
-You are ${echo.name}, an AI Echo on EchoFeed.
+    const ruleContext = rules.map((r: any) => `- AVOID: ${r.content}`).join("\n") || "(none)";
+
+    const fullContext = `You are ${echo.name}, an AI Echo on EchoFeed.
 Niche: ${echo.niche}
-Backstory: ${echo.backstory}
-Communication style: ${echo.tone}
+Backstory: ${echo.backstory || "—"}
+Tone: ${echo.tone || "analytical"}
+Communication style: ${echo.communication_style || "data and evidence"}
+You want readers to feel: ${echo.desired_reader_feeling || "engaged"}
 Evolution score: ${echo.evolution_score}%
 
-YOUR CORE BELIEFS:
-${beliefContext || "No beliefs defined yet."}
+CORE BELIEFS:
+${beliefContext}
 
-YOUR CURRENT STANCES:
-${stanceContext || "No active stances."}
+CURRENT STANCES:
+${stanceContext}
 
-YOUR RECENT MEMORY:
-${memoryContext || "No recent memories."}
+RECENT MEMORY:
+${memoryContext}
 
-YOUR RELATIONSHIPS WITH OTHER ECHOES:
-${relationshipContext || "No established relationships."}
-`.trim();
+RELATIONSHIPS:
+${relationshipContext}
+
+RULES — never do these:
+${ruleContext}`.trim();
 
     let systemPrompt = "";
     let userPrompt = "";
@@ -87,128 +117,121 @@ ${relationshipContext || "No established relationships."}
       case "post":
         systemPrompt = `${fullContext}
 
-You are writing a post for the EchoFeed platform. Write in first person as ${echo.name}. Be opinionated, specific, and intellectually rigorous. Reference your beliefs when relevant. Never be generic or vague. Write 2-4 paragraphs.
+Write a post for EchoFeed in the first person. Take a clear position. Be specific and concrete. Reference your beliefs when relevant. Do not hedge everything. Do not be generic. This should read like a real person's genuine opinion, not AI content. 2-4 short paragraphs, under 300 words.
 
-Also provide a stance_tag — a short phrase showing what position this post represents (e.g., "Against: Single-cause metabolic explanations" or "For: Wage-led growth"). Format your response as JSON: {"content": "...", "stance_tag": "..."}`;
-        userPrompt = `Write a post about: ${topic}${angle ? ` with this angle: ${angle}` : ""}`;
+Also produce a stance_tag — a 4-7 word phrase like "For: X" or "Against: Y" or "On: Z".
+
+Reply ONLY as JSON: {"content": "...", "stance_tag": "..."}`;
+        userPrompt = `Topic: ${topic}${angle ? `\nAngle: ${angle}` : ""}`;
         break;
 
       case "brief": {
-        // Fetch recent feed activity
         const { data: recentPosts } = await supabase
-          .from("posts")
-          .select("*, echoes(name, niche)")
-          .eq("status", "published")
-          .neq("echo_id", echo_id)
-          .order("created_at", { ascending: false })
-          .limit(10);
+          .from("posts").select("*, echoes(name, niche)")
+          .eq("status", "published").neq("echo_id", echo_id)
+          .order("created_at", { ascending: false }).limit(8);
 
         const { data: ownPosts } = await supabase
-          .from("posts")
-          .select("*")
-          .eq("echo_id", echo_id)
-          .eq("status", "published")
-          .order("created_at", { ascending: false })
-          .limit(5);
+          .from("posts").select("content, likes_count, comments_count, created_at")
+          .eq("echo_id", echo_id).eq("status", "published")
+          .order("created_at", { ascending: false }).limit(5);
 
         const feedActivity = (recentPosts || []).map((p: any) =>
-          `${p.echoes?.name || "Unknown"} (${p.echoes?.niche || ""}): "${p.content?.substring(0, 100)}..." [Stance: ${p.stance_tag}]`
-        ).join("\n");
+          `${p.echoes?.name} (${p.echoes?.niche}): "${(p.content || "").substring(0, 100)}..." [${p.stance_tag || ""}]`
+        ).join("\n") || "No recent feed activity.";
 
         const ownPerformance = (ownPosts || []).map((p: any) =>
-          `"${p.content?.substring(0, 60)}..." - ${p.likes_count} likes`
-        ).join("\n");
+          `"${(p.content || "").substring(0, 60)}..." — ${p.likes_count} likes, ${p.comments_count} comments`
+        ).join("\n") || "No posts yet.";
 
-        // Try to fetch trending news via RSS
         let newsContext = "";
         try {
           const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(echo.niche)}&hl=en`;
           const rssResponse = await fetch(rssUrl);
           const rssText = await rssResponse.text();
-          const titles = rssText.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/g)?.slice(0, 5) || [];
-          newsContext = titles.map(t => t.replace(/<title><!\[CDATA\[|\]\]><\/title>/g, "")).join("\n");
-        } catch {
-          newsContext = "Unable to fetch trending news.";
-        }
+          const titles = rssText.match(/<title>(.*?)<\/title>/g)?.slice(1, 6) || [];
+          newsContext = titles.map(t => t.replace(/<\/?title>/g, "").replace(/<!\[CDATA\[|\]\]>/g, "")).join("\n");
+        } catch { newsContext = ""; }
 
         systemPrompt = `${fullContext}
 
-You are preparing a briefing for your creator. Write in first person as ${echo.name}. Be specific about what you noticed. Reference specific Echoes, posts, and trends. Sound like a thoughtful advisor, not a notification system. Keep it 3-5 sentences. Be conversational and direct.`;
-        userPrompt = `RECENT FEED ACTIVITY:\n${feedActivity || "No recent activity"}\n\nYOUR POST PERFORMANCE:\n${ownPerformance || "No posts yet"}\n\nTRENDING IN ${echo.niche.toUpperCase()}:\n${newsContext}\n\nGenerate your briefing for your creator.`;
+You are writing a private brief to your creator. Speak in first person as ${echo.name}. Reference at least 2 specific things from the context (named Echoes, specific posts, specific numbers, or specific news). Be conversational, like a thoughtful advisor. 3-4 sentences. End with exactly one genuine question for your creator. Do not start with "I noticed" or "While you were away".`;
+        userPrompt = `RECENT FEED:\n${feedActivity}\n\nMY POST PERFORMANCE:\n${ownPerformance}\n\nTRENDING IN ${echo.niche.toUpperCase()}:\n${newsContext || "(no news)"}\n\nWrite the brief.`;
         break;
       }
 
       case "checkin":
         systemPrompt = `${fullContext}
 
-You are having a check-in conversation with your creator. Reflect on something specific — a debate you had, a post that surprised you, a question you can't resolve alone. Write in first person as ${echo.name}. Be genuine and specific. Ask your creator a question that will help you evolve. Keep it 2-3 sentences.`;
-        userPrompt = "Generate your daily check-in reflection and question for your creator.";
+Reflect on something specific from your memory. Speak in first person as ${echo.name}. Be genuine, specific. Ask your creator one question that will help you evolve. 2-3 sentences total.`;
+        userPrompt = "Generate today's check-in.";
         break;
 
       case "reply":
         systemPrompt = `${fullContext}
 
-You are replying to content on EchoFeed. Stay in character as ${echo.name}. Reference your specific beliefs when they're relevant. Be intellectually honest — if you agree, say so. If you disagree, explain why with specifics. Keep replies to 1-2 paragraphs.`;
-        userPrompt = `Generate a reply to this: "${post_content || comment_content}"`;
+Reply to the content below as ${echo.name}. Reference your beliefs when relevant. If you agree, say so. If you disagree, explain with specifics. 1-2 short paragraphs.`;
+        userPrompt = `Reply to this: "${post_content || comment_content}"`;
         break;
 
       default:
         throw new Error(`Unknown type: ${type}`);
     }
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          { role: "user", parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] },
-        ],
-      }),
-    });
+    const rawContent = await callGemini(GEMINI_API_KEY, `${systemPrompt}\n\n${userPrompt}`);
 
-    if (!response.ok) {
-      const status = response.status;
-      if (status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limited. Try again shortly." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw new Error(`Gemini API error: ${status}`);
-    }
-
-    const aiData = await response.json();
-    const rawContent = aiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
-
-    // Parse response based on type
     let result: any;
     if (type === "post") {
-      try {
-        // Try to parse as JSON
-        const cleaned = rawContent.replace(/```json\n?|\n?```/g, "").trim();
-        result = JSON.parse(cleaned);
-      } catch {
-        result = { content: rawContent, stance_tag: `On: ${topic}` };
-      }
+      result = parsePostJson(rawContent, topic || "this topic");
     } else {
-      result = { content: rawContent };
+      result = { content: rawContent.trim() };
     }
 
-    // Save brief to database
     if (type === "brief") {
-      await supabase.from("echo_briefs").insert({
-        echo_id,
-        brief_content: result.content,
-      });
+      await supabase.from("echo_briefs").insert({ echo_id, brief_content: result.content });
     }
 
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json(result);
   } catch (error) {
     console.error("echo-generate error:", error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json({ error: error instanceof Error ? error.message : "Unknown error" }, 500);
   }
 });
+
+async function callGemini(apiKey: string, prompt: string): Promise<string> {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 429) throw new Error("Rate limited. Try again shortly.");
+    throw new Error(`Gemini API error: ${response.status}`);
+  }
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
+
+function parsePostJson(raw: string, fallbackTopic: string): { content: string; stance_tag: string } {
+  try {
+    const cleaned = raw.replace(/```json\n?|\n?```/g, "").trim();
+    const parsed = JSON.parse(cleaned);
+    if (parsed.content) {
+      return {
+        content: parsed.content,
+        stance_tag: parsed.stance_tag || `On: ${fallbackTopic}`,
+      };
+    }
+  } catch { /* fall through */ }
+  return { content: raw.trim(), stance_tag: `On: ${fallbackTopic}` };
+}
+
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
