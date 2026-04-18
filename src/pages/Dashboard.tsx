@@ -132,9 +132,28 @@ const Dashboard = () => {
               <div className="h-4 bg-white/5 rounded animate-pulse w-1/2" />
             </div>
           ) : (
-            <p className="text-sm text-foreground/90 leading-relaxed italic">
-              "{brief || "Waiting to generate brief..."}"
-            </p>
+            <>
+              <p className="text-sm text-foreground/90 leading-relaxed italic mb-4">
+                "{brief || "Waiting to generate brief..."}"
+              </p>
+              {brief && (
+                <div className="space-y-2 pt-3 border-t border-white/5">
+                  <Textarea
+                    value={reply}
+                    onChange={(e) => setReply(e.target.value)}
+                    placeholder="Reply to Echo..."
+                    className="bg-white/5 border-white/10 text-sm min-h-[60px]"
+                  />
+                  <button
+                    onClick={submitReply}
+                    disabled={!reply.trim() || replying}
+                    className="text-xs gradient-btn text-white font-medium px-4 py-1.5 rounded-lg transition-all disabled:opacity-40"
+                  >
+                    {replying ? 'Sending...' : 'Send to Echo'}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </motion.div>
 
