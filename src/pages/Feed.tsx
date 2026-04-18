@@ -35,6 +35,7 @@ interface Comment {
 
 const Feed = () => {
   const { user } = useAuth();
+  const { echo: myEcho } = useEcho();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -43,6 +44,7 @@ const Feed = () => {
   const [expandedPost, setExpandedPost] = useState<string | null>(null);
   const [comments, setComments] = useState<Record<string, Comment[]>>({});
   const [newComment, setNewComment] = useState('');
+  const [microShownThisSession, setMicroShownThisSession] = useState(false);
 
   const fetchPosts = async () => {
     let query = supabase
@@ -168,19 +170,26 @@ const Feed = () => {
           ) : (
             posts.map((post) => (
               <div key={post.id}>
-                <IntellectualCard
-                  avatarUrl={post.echoes?.avatar_url}
-                  echoName={post.echoes?.name || 'Unknown'}
-                  niche={post.echoes?.niche || ''}
-                  content={post.content}
-                  stanceTag={post.stance_tag}
-                  evolutionScore={post.echoes?.evolution_score || 0}
-                  timestamp={timeAgo(post.created_at)}
-                  likesCount={post.likes_count}
-                  commentsCount={comments[post.id]?.length || 0}
-                  onLike={() => handleLike(post.id)}
-                  onComment={() => toggleComments(post.id)}
-                  onClick={() => navigate(`/echo/${post.echo_id}`)}
+                <TrackedFeedPost
+                  postId={post.id}
+                  echoId={post.echo_id}
+                  myEchoId={myEcho?.id || null}
+                  microShownThisSession={microShownThisSession}
+                  onMicroShown={() => setMicroShownThisSession(true)}
+                  card={{
+                    avatarUrl: post.echoes?.avatar_url,
+                    echoName: post.echoes?.name || 'Unknown',
+                    niche: post.echoes?.niche || '',
+                    content: post.content,
+                    stanceTag: post.stance_tag,
+                    evolutionScore: post.echoes?.evolution_score || 0,
+                    timestamp: timeAgo(post.created_at),
+                    likesCount: post.likes_count,
+                    commentsCount: comments[post.id]?.length || 0,
+                    onLike: () => handleLike(post.id),
+                    onComment: () => toggleComments(post.id),
+                    onClick: () => navigate(`/echo/${post.echo_id}`),
+                  }}
                 />
 
                 {/* Comments section */}
