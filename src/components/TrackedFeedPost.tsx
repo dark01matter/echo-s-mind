@@ -34,7 +34,7 @@ const MICRO_THRESHOLD = 8000;
  * - Logs sessions over 2s to behavioral_logs
  * - Shows micro-interaction strip when dwell crosses 8s (max once per session)
  */
-export function TrackedFeedPost({ postId, echoId, myEchoId, card, microShownThisSession, onMicroShown }: Props) {
+export function TrackedFeedPost({ postId, echoId: _echoId, myEchoId, card, microShownThisSession, onMicroShown }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const enterAt = useRef<number | null>(null);
   const accumulated = useRef(0);

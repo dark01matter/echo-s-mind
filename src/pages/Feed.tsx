@@ -68,8 +68,9 @@ const Feed = () => {
   const handleLike = async (postId: string) => {
     if (!user) { toast({ title: 'Sign in to like posts' }); return; }
     try {
-      await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id });
-      await supabase.rpc('increment_likes', { post_id: postId });
+      const { error } = await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id });
+      if (error) throw error;
+      // likes_count is auto-incremented by DB trigger
       fetchPosts();
     } catch {
       toast({ title: 'Already liked' });
@@ -77,12 +78,26 @@ const Feed = () => {
   };
 
   const fetchComments = async (postId: string) => {
-    const { data } = await supabase
+    const { data: rawComments } = await supabase
       .from('comments')
-      .select('*, profiles(display_name)')
+      .select('*')
       .eq('post_id', postId)
       .order('created_at', { ascending: true });
-    setComments(prev => ({ ...prev, [postId]: (data as Comment[]) || [] }));
+
+    const userIds = [...new Set((rawComments || []).map((c: any) => c.user_id))];
+    const { data: profiles } = userIds.length
+      ? await supabase.from('profiles').select('id, display_name').in('id', userIds)
+      : { data: [] as any[] };
+    const profileMap = new Map((profiles || []).map((p: any) => [p.id, p.display_name]));
+
+    const merged: Comment[] = (rawComments || []).map((c: any) => ({
+      id: c.id,
+      content: c.content,
+      created_at: c.created_at,
+      user_id: c.user_id,
+      profiles: { display_name: profileMap.get(c.user_id) || 'User' },
+    }));
+    setComments(prev => ({ ...prev, [postId]: merged }));
   };
 
   const handleComment = async (postId: string) => {
