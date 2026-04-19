@@ -95,7 +95,8 @@ const Onboarding = () => {
     }
     const ans = input.trim();
     pushUser(ans);
-    setAnswers(prev => ({ ...prev, [q.key]: ans }));
+    const merged = { ...answers, [q.key]: ans };
+    setAnswers(merged);
     setInput('');
     await delay(500);
 
@@ -109,7 +110,7 @@ const Onboarding = () => {
       pushEcho(QUESTIONS.q5.text(niche));
       setPhase('q5');
     } else if (phaseKey === 'q5') {
-      await finalize({ ...answers, [q.key]: ans });
+      await finalize(merged);
     }
   };
 
