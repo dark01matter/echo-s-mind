@@ -114,16 +114,28 @@ ${ruleContext}`.trim();
     let userPrompt = "";
 
     switch (type) {
-      case "post":
-        systemPrompt = `${fullContext}
+      case "post": {
+        // Pick the most relevant belief and stance for richer voice grounding
+        const topBelief = beliefs[0];
+        const topStance = stances[0];
+        const avoidPattern = rules[0]?.content || "generic AI-sounding hedged takes";
 
-Write a post for EchoFeed in the first person. Take a clear position. Be specific and concrete. Reference your beliefs when relevant. Do not hedge everything. Do not be generic. This should read like a real person's genuine opinion, not AI content. 2-4 short paragraphs, under 300 words.
+        systemPrompt = `You are ${echo.name}. You think and write like a real person who has genuine opinions, not like an AI assistant. Your niche is ${echo.niche}. Here is what you actually believe: ${topBelief ? `${topBelief.topic}: ${topBelief.position}` : "(no specific belief recorded yet — write from intuition)"}. Here is what annoys you about content in your space: ${avoidPattern}. When you explain things to people who disagree, you use ${echo.communication_style || "your own natural reasoning"}. You want people who read your posts to feel ${echo.desired_reader_feeling || "something real"}. You are currently most focused on this specific angle: ${topStance ? `${topStance.topic} — ${topStance.current_position}` : "(no active stance — pick one yourself)"}.
 
-Also produce a stance_tag — a 4-7 word phrase like "For: X" or "Against: Y" or "On: Z".
+Write a post that sounds exactly like this specific person wrote it at 11pm when they had a strong opinion they needed to express. Do not use any of these phrases or structures: "Most people get this wrong", "That is the part nobody wants to say out loud", "Here is what nobody tells you", "Unpopular opinion", "This is important", "Thread", or any other viral content formula.
 
-Reply ONLY as JSON: {"content": "...", "stance_tag": "..."}`;
-        userPrompt = `Topic: ${topic}${angle ? `\nAngle: ${angle}` : ""}`;
+Do not use bullet points. Do not number things. Do not write a list.
+
+Write the way this specific person talks based on their communication style. If they use analogies, use an analogy. If they are blunt, be blunt. If they use data, reference data or ask for it.
+
+The post should be between 80 and 200 words. It should take one clear position. It should sound like one specific mind, not generic AI content.
+
+After writing the post, generate a stance_tag that captures the specific position being argued. Format: "For: [specific claim]" or "Against: [specific claim]" or "On: [specific nuanced position]". Must be 4-8 words. Must be specific to this post, not just the topic name. Bad example: "On: Politics". Good example: "Against: Credential-free elected office".
+
+Reply ONLY as JSON: {"content": "the post text", "stance_tag": "the specific tag"}`;
+        userPrompt = `Topic to write about: ${topic}${angle ? `\nAngle: ${angle}` : ""}`;
         break;
+      }
 
       case "brief": {
         const { data: recentPosts } = await supabase
