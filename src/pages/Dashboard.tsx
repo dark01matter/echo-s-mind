@@ -72,14 +72,30 @@ const Dashboard = () => {
       setStats({ posts: postCount || 0, likes: totalLikes, debates: debateCount || 0 });
     };
 
-    // Generate brief on login
+    // Generate brief — only if last brief is older than 4h
     const generateBrief = async () => {
       setBriefLoading(true);
       try {
-        const { data } = await supabase.functions.invoke('echo-generate', {
-          body: { type: 'brief', echo_id: echo.id },
-        });
-        if (data?.content) setBrief(data.content);
+        const { data: latest } = await supabase
+          .from('echo_briefs')
+          .select('brief_content, generated_at')
+          .eq('echo_id', echo.id)
+          .order('generated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const fourHoursAgo = Date.now() - 4 * 60 * 60 * 1000;
+        const isFresh = latest && new Date(latest.generated_at).getTime() > fourHoursAgo;
+
+        if (isFresh) {
+          setBrief(latest!.brief_content);
+        } else {
+          const { data } = await supabase.functions.invoke('echo-generate', {
+            body: { type: 'brief', echo_id: echo.id },
+          });
+          if (data?.content) setBrief(data.content);
+          else if (latest) setBrief(latest.brief_content);
+        }
       } catch {
         setBrief("I've been thinking while you were away. Connect your AI backend to hear what I've been tracking.");
       } finally {
