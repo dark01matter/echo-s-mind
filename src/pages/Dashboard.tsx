@@ -153,7 +153,7 @@ const Dashboard = () => {
           ) : (
             <>
               <p className="font-display text-xl sm:text-2xl text-foreground/95 leading-relaxed text-balance">
-                {brief || "Waiting to generate brief..."}
+                {brief || `${echo.name}: I'm still getting to know you. Generate your first post so I can start understanding your voice.`}
               </p>
               {brief && (
                 <div className="mt-8 space-y-3">
