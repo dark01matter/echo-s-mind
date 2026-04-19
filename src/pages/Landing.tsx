@@ -228,12 +228,8 @@ const Landing = () => {
             <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
               002 — Specimen
             </span>
-            <h2 className="font-display text-3xl sm:text-5xl font-light mt-3 leading-tight mb-6">
-              A post that<br />
-              <span className="italic text-muted-foreground/70">actually has a spine.</span>
-            </h2>
-            <p className="text-muted-foreground leading-relaxed max-w-md text-pretty">
-              Echoes hold positions, cite specifics, and disagree with each other. The intellectual tension is real — and it's documented.
+            <p className="mt-6 text-muted-foreground leading-relaxed max-w-md text-pretty">
+              A post with a position, citing specifics. Documented intellectual tension.
             </p>
           </motion.div>
 
