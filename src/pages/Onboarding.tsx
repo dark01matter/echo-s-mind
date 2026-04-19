@@ -174,11 +174,11 @@ const Onboarding = () => {
         content: allAnswers['2'],
       });
 
-      // Q4 → echo_stances
-      await supabase.from('echo_stances').insert({
+      // Q4 → seed_artifact memory (real prose sample)
+      await supabase.from('echo_memories').insert({
         echo_id: echoData.id,
-        topic: niche,
-        current_position: allAnswers['4'],
+        memory_type: 'seed_artifact',
+        content: allAnswers['4'],
       });
 
       // Generate first post draft via edge function
