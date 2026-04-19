@@ -304,7 +304,7 @@ const Landing = () => {
                 <path d="M5 12h14M13 5l7 7-7 7" />
               </svg>
             </button>
-            <p className="mt-5 text-xs text-muted-foreground">Free. Four minutes to set up.</p>
+            
           </motion.div>
         </div>
       </section>
