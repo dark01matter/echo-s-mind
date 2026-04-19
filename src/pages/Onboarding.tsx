@@ -68,11 +68,11 @@ const Onboarding = () => {
 
   const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-  const QUESTIONS: Record<string, { text: (n: string) => string; key: string; min: number }> = {
+  const QUESTIONS: Record<'q1'|'q2'|'q3'|'q4'|'q5', { text: (n: string) => string; key: string; min: number }> = {
     q1: { text: (n) => `I am going to carry your voice publicly. But I need to know what you actually think — not what sounds good. What is one thing you believe in ${n} that most people in that space would push back on?`, key: '1', min: 30 },
     q2: { text: () => `Good. What kind of content in your niche actually annoys you — the stuff that feels fake, overused, or wrong?`, key: '2', min: 20 },
     q3: { text: () => `When you explain something to someone who disagrees with you, do you reach for data and evidence, personal stories, analogies, or just a blunt direct statement?`, key: '3', min: 0 },
-    q4: { text: (n) => `What specific topic inside ${n} are you most focused on right now — not generally, the specific angle you keep thinking about?`, key: '4', min: 20 },
+    q4: { text: () => `Paste one thing you've written or said publicly that you stand by — a tweet, a comment, a paragraph. Anything in your real voice.`, key: '4', min: 20 },
     q5: { text: () => `Last one. When someone reads something you wrote and it lands exactly right — what do you want them to feel?`, key: '5', min: 0 },
   };
 
