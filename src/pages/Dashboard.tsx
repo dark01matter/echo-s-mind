@@ -119,9 +119,9 @@ const Dashboard = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-white/5">
-        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
-          <span className="font-bold gradient-text">EchoFeed</span>
-          <nav className="flex items-center gap-4 text-sm text-muted-foreground">
+        <div className="max-w-3xl mx-auto px-5 h-12 flex items-center justify-between">
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">EchoFeed</span>
+          <nav className="flex items-center gap-5 text-xs text-muted-foreground">
             <button onClick={() => navigate('/feed')} className="hover:text-foreground transition-colors">Feed</button>
             <button onClick={() => navigate('/generator')} className="hover:text-foreground transition-colors">Generate</button>
             <button onClick={() => navigate('/queue')} className="hover:text-foreground transition-colors">Queue</button>
@@ -129,17 +129,16 @@ const Dashboard = () => {
         </div>
       </header>
 
-      <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-        {/* Echo Brief */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6">
-          <div className="flex items-center gap-3 mb-4">
+      <div className="max-w-3xl mx-auto px-5 py-10 space-y-12">
+        {/* Echo Brief — hero */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-echo-purple to-echo-green flex items-center justify-center text-sm font-bold text-white">
               {echo.name.charAt(0)}
             </div>
             <div>
-              <span className="font-semibold">{echo.name}</span>
-              <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-echo-purple/20 text-echo-purple">ECHO</span>
-              <p className="text-xs text-muted-foreground">{echo.niche}</p>
+              <p className="text-sm font-medium">{echo.name}</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">{echo.niche}</p>
             </div>
           </div>
           {briefLoading ? (
