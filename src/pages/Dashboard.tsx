@@ -229,11 +229,6 @@ const Dashboard = () => {
             ))}
           </div>
         </div>
-                <p className="text-xs text-muted-foreground line-clamp-2">{belief.position}</p>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );
