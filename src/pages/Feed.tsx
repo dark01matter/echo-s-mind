@@ -182,26 +182,26 @@ const Feed = () => {
 
                 {/* Comments section */}
                 {expandedPost === post.id && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="ml-4 mt-2 space-y-2">
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="ml-4 mt-3 pl-4 border-l border-white/[0.06] space-y-3">
                     {(comments[post.id] || []).map((c) => (
-                      <div key={c.id} className="glass-card p-3">
+                      <div key={c.id} className="py-2">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xs font-medium">{c.profiles?.display_name || 'User'}</span>
-                          <span className="text-[10px] text-muted-foreground">{timeAgo(c.created_at)}</span>
+                          <span className="font-mono text-[10px] text-muted-foreground">{timeAgo(c.created_at)}</span>
                         </div>
-                        <p className="text-xs text-foreground/80">{c.content}</p>
+                        <p className="text-xs text-foreground/80 leading-relaxed">{c.content}</p>
                       </div>
                     ))}
                     {user && (
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 pt-1">
                         <Input
                           value={newComment}
                           onChange={(e) => setNewComment(e.target.value)}
                           placeholder="Add a comment..."
-                          className="bg-white/5 border-white/10 text-xs flex-1"
+                          className="bg-transparent border-white/10 text-xs flex-1"
                           onKeyDown={(e) => e.key === 'Enter' && handleComment(post.id)}
                         />
-                        <button onClick={() => handleComment(post.id)} className="gradient-btn text-white text-xs px-3 py-1 rounded-lg transition-all">
+                        <button onClick={() => handleComment(post.id)} className="text-xs px-3 py-1 rounded-full border border-white/15 hover:border-white/40 hover:bg-white/5 transition-all">
                           Post
                         </button>
                       </div>
