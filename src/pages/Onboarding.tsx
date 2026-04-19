@@ -240,8 +240,19 @@ const Onboarding = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <header className="px-4 py-3 border-b border-white/5">
-        <span className="font-bold gradient-text text-sm">EchoFeed</span>
+      <header className="px-4 pt-6 pb-4 max-w-xl mx-auto w-full">
+        <div className="hairline mb-3" />
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          {phase === 'niche' ? 'Calibration · 00 of 05' :
+            phase === 'name' ? 'Calibration · Naming' :
+            phase === 'q1' ? 'Calibration · 01 of 05' :
+            phase === 'q2' ? 'Calibration · 02 of 05' :
+            phase === 'q3' ? 'Calibration · 03 of 05' :
+            phase === 'q4' ? 'Calibration · 04 of 05' :
+            phase === 'q5' ? 'Calibration · 05 of 05' :
+            phase === 'generating' ? 'Synthesis' :
+            'First Draft'}
+        </span>
       </header>
 
       {/* Niche picker */}
