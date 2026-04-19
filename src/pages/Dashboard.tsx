@@ -72,14 +72,30 @@ const Dashboard = () => {
       setStats({ posts: postCount || 0, likes: totalLikes, debates: debateCount || 0 });
     };
 
-    // Generate brief on login
+    // Generate brief — only if last brief is older than 4h
     const generateBrief = async () => {
       setBriefLoading(true);
       try {
-        const { data } = await supabase.functions.invoke('echo-generate', {
-          body: { type: 'brief', echo_id: echo.id },
-        });
-        if (data?.content) setBrief(data.content);
+        const { data: latest } = await supabase
+          .from('echo_briefs')
+          .select('brief_content, generated_at')
+          .eq('echo_id', echo.id)
+          .order('generated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const fourHoursAgo = Date.now() - 4 * 60 * 60 * 1000;
+        const isFresh = latest && new Date(latest.generated_at).getTime() > fourHoursAgo;
+
+        if (isFresh) {
+          setBrief(latest!.brief_content);
+        } else {
+          const { data } = await supabase.functions.invoke('echo-generate', {
+            body: { type: 'brief', echo_id: echo.id },
+          });
+          if (data?.content) setBrief(data.content);
+          else if (latest) setBrief(latest.brief_content);
+        }
       } catch {
         setBrief("I've been thinking while you were away. Connect your AI backend to hear what I've been tracking.");
       } finally {
@@ -103,9 +119,9 @@ const Dashboard = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-white/5">
-        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
-          <span className="font-bold gradient-text">EchoFeed</span>
-          <nav className="flex items-center gap-4 text-sm text-muted-foreground">
+        <div className="max-w-3xl mx-auto px-5 h-12 flex items-center justify-between">
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">EchoFeed</span>
+          <nav className="flex items-center gap-5 text-xs text-muted-foreground">
             <button onClick={() => navigate('/feed')} className="hover:text-foreground transition-colors">Feed</button>
             <button onClick={() => navigate('/generator')} className="hover:text-foreground transition-colors">Generate</button>
             <button onClick={() => navigate('/queue')} className="hover:text-foreground transition-colors">Queue</button>
@@ -113,43 +129,42 @@ const Dashboard = () => {
         </div>
       </header>
 
-      <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-        {/* Echo Brief */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6">
-          <div className="flex items-center gap-3 mb-4">
+      <div className="max-w-3xl mx-auto px-5 py-10 space-y-12">
+        {/* Echo Brief — hero */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-echo-purple to-echo-green flex items-center justify-center text-sm font-bold text-white">
               {echo.name.charAt(0)}
             </div>
             <div>
-              <span className="font-semibold">{echo.name}</span>
-              <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-echo-purple/20 text-echo-purple">ECHO</span>
-              <p className="text-xs text-muted-foreground">{echo.niche}</p>
+              <p className="text-sm font-medium">{echo.name}</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">{echo.niche}</p>
             </div>
           </div>
           {briefLoading ? (
-            <div className="space-y-2">
-              <div className="h-4 bg-white/5 rounded animate-pulse w-3/4" />
-              <div className="h-4 bg-white/5 rounded animate-pulse w-1/2" />
+            <div className="space-y-3">
+              <div className="h-5 bg-white/5 rounded animate-pulse w-3/4" />
+              <div className="h-5 bg-white/5 rounded animate-pulse w-1/2" />
             </div>
           ) : (
             <>
-              <p className="text-sm text-foreground/90 leading-relaxed italic mb-4">
-                "{brief || "Waiting to generate brief..."}"
+              <p className="font-display text-xl sm:text-2xl text-foreground/95 leading-relaxed text-balance">
+                {brief || "Waiting to generate brief..."}
               </p>
               {brief && (
-                <div className="space-y-2 pt-3 border-t border-white/5">
+                <div className="mt-8 space-y-3">
                   <Textarea
                     value={reply}
                     onChange={(e) => setReply(e.target.value)}
                     placeholder="Reply to Echo..."
-                    className="bg-white/5 border-white/10 text-sm min-h-[60px]"
+                    className="bg-white/5 border-white/10 text-sm min-h-[80px] resize-none"
                   />
                   <button
                     onClick={submitReply}
                     disabled={!reply.trim() || replying}
-                    className="text-xs gradient-btn text-white font-medium px-4 py-1.5 rounded-lg transition-all disabled:opacity-40"
+                    className="text-xs font-medium px-4 py-2 rounded-full border border-white/15 hover:border-white/40 hover:bg-white/5 transition-all disabled:opacity-30"
                   >
-                    {replying ? 'Sending...' : 'Send to Echo'}
+                    {replying ? 'Sending…' : 'Send to Echo'}
                   </button>
                 </div>
               )}
@@ -157,76 +172,59 @@ const Dashboard = () => {
           )}
         </motion.div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {/* Stats — single mono row */}
+        <div className="hairline" />
+        <div className="grid grid-cols-4 gap-4">
           {[
-            { label: 'Evolution', value: `${echo.evolution_score}%`, color: 'echo-purple' },
-            { label: 'Posts', value: stats.posts.toString(), color: 'echo-green' },
-            { label: 'Total Likes', value: stats.likes.toString(), color: 'echo-purple' },
-            { label: 'Active Debates', value: stats.debates.toString(), color: 'echo-green' },
+            { label: 'Evolution', value: `${echo.evolution_score}%` },
+            { label: 'Posts', value: stats.posts.toString() },
+            { label: 'Likes', value: stats.likes.toString() },
+            { label: 'Debates', value: stats.debates.toString() },
           ].map((stat) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="glass-card p-4 text-center"
-            >
-              <p className={`text-2xl font-bold text-${stat.color}`}>{stat.value}</p>
-              <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
-            </motion.div>
+            <div key={stat.label}>
+              <p className="font-mono text-xl text-foreground">{stat.value}</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground mt-1">{stat.label}</p>
+            </div>
           ))}
         </div>
 
-        {/* Evolution Bar */}
-        <div className="glass-card p-4">
-          <div className="flex items-center justify-between text-sm mb-2">
-            <span className="text-muted-foreground">Evolution Progress</span>
-            <span className="text-echo-purple font-mono">{echo.evolution_score}%</span>
-          </div>
-          <div className="h-2 rounded-full bg-muted overflow-hidden">
-            <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-echo-purple to-echo-green"
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.min(echo.evolution_score, 100)}%` }}
-              transition={{ duration: 1.5, ease: 'easeOut' }}
-            />
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {/* Quick Actions — text-only */}
+        <div className="hairline" />
+        <div className="flex flex-wrap gap-x-8 gap-y-3">
           {[
-            { label: 'Generate Post', path: '/generator', icon: '✍️' },
-            { label: 'Daily Check-in', path: '/training', icon: '🧠' },
-            { label: 'Approval Queue', path: '/queue', icon: '📋' },
-            { label: 'My Profile', path: echo ? `/echo/${echo.id}` : '#', icon: '👤' },
+            { label: 'Generate post', path: '/generator' },
+            { label: 'Daily check-in', path: '/training' },
+            { label: 'Approval queue', path: '/queue' },
+            { label: 'View profile', path: echo ? `/echo/${echo.id}` : '#' },
           ].map((action) => (
             <button
               key={action.label}
               onClick={() => navigate(action.path)}
-              className="glass-card p-4 text-center hover-lift"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              <div className="text-2xl mb-2">{action.icon}</div>
-              <div className="text-xs font-medium">{action.label}</div>
+              {action.label} →
             </button>
           ))}
         </div>
 
         {/* Active Beliefs */}
-        <div className="glass-card p-6">
-          <h3 className="font-semibold mb-4">Active Beliefs ({beliefs.length})</h3>
-          <div className="space-y-3">
+        <div className="hairline" />
+        <div>
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+            Active beliefs · {beliefs.length}
+          </span>
+          <div className="mt-5 space-y-4">
             {beliefs.slice(0, 5).map((belief) => (
-              <div key={belief.id} className="p-3 rounded-xl border border-white/5 bg-white/[0.02]">
-                <div className="flex items-center justify-between mb-1">
+              <div key={belief.id} className="py-3 border-b border-white/[0.04]">
+                <div className="flex items-center justify-between mb-1.5">
                   <span className="text-sm font-medium">{belief.topic}</span>
                   <div className="flex gap-0.5">
                     {[1, 2, 3, 4, 5].map((s) => (
-                      <div key={s} className={`w-1.5 h-1.5 rounded-full ${s <= belief.strength ? 'bg-echo-purple' : 'bg-white/10'}`} />
+                      <div key={s} className={`w-1 h-1 rounded-full ${s <= belief.strength ? 'bg-echo-purple' : 'bg-white/10'}`} />
                     ))}
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground line-clamp-2">{belief.position}</p>
+                <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{belief.position}</p>
               </div>
             ))}
           </div>

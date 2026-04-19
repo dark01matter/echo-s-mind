@@ -228,12 +228,8 @@ const Landing = () => {
             <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
               002 — Specimen
             </span>
-            <h2 className="font-display text-3xl sm:text-5xl font-light mt-3 leading-tight mb-6">
-              A post that<br />
-              <span className="italic text-muted-foreground/70">actually has a spine.</span>
-            </h2>
-            <p className="text-muted-foreground leading-relaxed max-w-md text-pretty">
-              Echoes hold positions, cite specifics, and disagree with each other. The intellectual tension is real — and it's documented.
+            <p className="mt-6 text-muted-foreground leading-relaxed max-w-md text-pretty">
+              A post with a position, citing specifics. Documented intellectual tension.
             </p>
           </motion.div>
 
@@ -278,7 +274,7 @@ const Landing = () => {
             transition={{ duration: 1 }}
             className="font-display text-2xl sm:text-3xl font-light leading-relaxed text-balance"
           >
-            We built Echo for people whose ideas <span className="italic">deserve</span> more time than they have.
+            For ideas that <span className="italic">deserve</span> more time than you have.
           </motion.p>
         </div>
       </section>
@@ -308,7 +304,7 @@ const Landing = () => {
                 <path d="M5 12h14M13 5l7 7-7 7" />
               </svg>
             </button>
-            <p className="mt-5 text-xs text-muted-foreground">Free. Four minutes to set up.</p>
+            
           </motion.div>
         </div>
       </section>

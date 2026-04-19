@@ -134,38 +134,26 @@ const Feed = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-white/5">
-        <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
-          <span className="font-bold gradient-text">EchoFeed</span>
-          <div className="flex items-center gap-3">
-            {user ? (
-              <button onClick={() => navigate('/dashboard')} className="text-sm text-muted-foreground hover:text-foreground">Dashboard</button>
-            ) : (
-              <button onClick={() => navigate('/login')} className="gradient-btn text-white text-xs font-medium px-4 py-1.5 rounded-lg transition-all">Sign In</button>
-            )}
-          </div>
+      <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-white/[0.04]">
+        <div className="max-w-2xl mx-auto px-5 h-12 flex items-center justify-between">
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">EchoFeed</span>
+          {user ? (
+            <button onClick={() => navigate('/dashboard')} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Dashboard</button>
+          ) : (
+            <button onClick={() => navigate('/login')} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Sign in</button>
+          )}
         </div>
       </header>
 
-      <div className="max-w-2xl mx-auto px-4 py-4">
-        {/* Filter */}
-        <div className="mb-4">
-          <Input
-            value={nicheFilter}
-            onChange={(e) => setNicheFilter(e.target.value)}
-            placeholder="Filter by niche..."
-            className="bg-white/5 border-white/10 text-sm"
-          />
-        </div>
-
+      <div className="max-w-2xl mx-auto px-5 py-8">
         {/* Posts */}
-        <div className="space-y-4">
+        <div className="space-y-8">
           {loading ? (
             [1, 2, 3].map(i => <div key={i} className="glass-card p-6 h-48 animate-pulse" />)
           ) : posts.length === 0 ? (
-            <div className="glass-card p-8 text-center text-muted-foreground">
-              <p>No posts yet. Be the first to create an Echo!</p>
-              <button onClick={() => navigate('/signup')} className="mt-4 gradient-btn text-white text-sm px-6 py-2 rounded-lg transition-all">Get Started</button>
+            <div className="text-center py-16">
+              <p className="font-display text-xl text-muted-foreground mb-6">No posts yet.</p>
+              <button onClick={() => navigate('/signup')} className="text-sm font-medium px-5 py-2.5 rounded-full border border-white/15 hover:border-white/40 hover:bg-white/5 transition-all">Create your Echo</button>
             </div>
           ) : (
             posts.map((post) => (
@@ -194,26 +182,26 @@ const Feed = () => {
 
                 {/* Comments section */}
                 {expandedPost === post.id && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="ml-4 mt-2 space-y-2">
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="ml-4 mt-3 pl-4 border-l border-white/[0.06] space-y-3">
                     {(comments[post.id] || []).map((c) => (
-                      <div key={c.id} className="glass-card p-3">
+                      <div key={c.id} className="py-2">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xs font-medium">{c.profiles?.display_name || 'User'}</span>
-                          <span className="text-[10px] text-muted-foreground">{timeAgo(c.created_at)}</span>
+                          <span className="font-mono text-[10px] text-muted-foreground">{timeAgo(c.created_at)}</span>
                         </div>
-                        <p className="text-xs text-foreground/80">{c.content}</p>
+                        <p className="text-xs text-foreground/80 leading-relaxed">{c.content}</p>
                       </div>
                     ))}
                     {user && (
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 pt-1">
                         <Input
                           value={newComment}
                           onChange={(e) => setNewComment(e.target.value)}
                           placeholder="Add a comment..."
-                          className="bg-white/5 border-white/10 text-xs flex-1"
+                          className="bg-transparent border-white/10 text-xs flex-1"
                           onKeyDown={(e) => e.key === 'Enter' && handleComment(post.id)}
                         />
-                        <button onClick={() => handleComment(post.id)} className="gradient-btn text-white text-xs px-3 py-1 rounded-lg transition-all">
+                        <button onClick={() => handleComment(post.id)} className="text-xs px-3 py-1 rounded-full border border-white/15 hover:border-white/40 hover:bg-white/5 transition-all">
                           Post
                         </button>
                       </div>

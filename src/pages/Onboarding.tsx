@@ -68,11 +68,11 @@ const Onboarding = () => {
 
   const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-  const QUESTIONS: Record<string, { text: (n: string) => string; key: string; min: number }> = {
+  const QUESTIONS: Record<'q1'|'q2'|'q3'|'q4'|'q5', { text: (n: string) => string; key: string; min: number }> = {
     q1: { text: (n) => `I am going to carry your voice publicly. But I need to know what you actually think — not what sounds good. What is one thing you believe in ${n} that most people in that space would push back on?`, key: '1', min: 30 },
     q2: { text: () => `Good. What kind of content in your niche actually annoys you — the stuff that feels fake, overused, or wrong?`, key: '2', min: 20 },
     q3: { text: () => `When you explain something to someone who disagrees with you, do you reach for data and evidence, personal stories, analogies, or just a blunt direct statement?`, key: '3', min: 0 },
-    q4: { text: (n) => `What specific topic inside ${n} are you most focused on right now — not generally, the specific angle you keep thinking about?`, key: '4', min: 20 },
+    q4: { text: () => `Paste one thing you've written or said publicly that you stand by — a tweet, a comment, a paragraph. Anything in your real voice.`, key: '4', min: 20 },
     q5: { text: () => `Last one. When someone reads something you wrote and it lands exactly right — what do you want them to feel?`, key: '5', min: 0 },
   };
 
@@ -95,7 +95,8 @@ const Onboarding = () => {
     }
     const ans = input.trim();
     pushUser(ans);
-    setAnswers(prev => ({ ...prev, [q.key]: ans }));
+    const merged = { ...answers, [q.key]: ans };
+    setAnswers(merged);
     setInput('');
     await delay(500);
 
@@ -109,7 +110,7 @@ const Onboarding = () => {
       pushEcho(QUESTIONS.q5.text(niche));
       setPhase('q5');
     } else if (phaseKey === 'q5') {
-      await finalize({ ...answers, [q.key]: ans });
+      await finalize(merged);
     }
   };
 
@@ -173,11 +174,11 @@ const Onboarding = () => {
         content: allAnswers['2'],
       });
 
-      // Q4 → echo_stances
-      await supabase.from('echo_stances').insert({
+      // Q4 → seed_artifact memory (real prose sample)
+      await supabase.from('echo_memories').insert({
         echo_id: echoData.id,
-        topic: niche,
-        current_position: allAnswers['4'],
+        memory_type: 'seed_artifact',
+        content: allAnswers['4'],
       });
 
       // Generate first post draft via edge function
@@ -239,8 +240,19 @@ const Onboarding = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <header className="px-4 py-3 border-b border-white/5">
-        <span className="font-bold gradient-text text-sm">EchoFeed</span>
+      <header className="px-4 pt-6 pb-4 max-w-xl mx-auto w-full">
+        <div className="hairline mb-3" />
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          {phase === 'niche' ? 'Calibration · 00 of 05' :
+            phase === 'name' ? 'Calibration · Naming' :
+            phase === 'q1' ? 'Calibration · 01 of 05' :
+            phase === 'q2' ? 'Calibration · 02 of 05' :
+            phase === 'q3' ? 'Calibration · 03 of 05' :
+            phase === 'q4' ? 'Calibration · 04 of 05' :
+            phase === 'q5' ? 'Calibration · 05 of 05' :
+            phase === 'generating' ? 'Synthesis' :
+            'First Draft'}
+        </span>
       </header>
 
       {/* Niche picker */}
