@@ -75,6 +75,7 @@ const Dashboard = () => {
     // Generate brief — only if last brief is older than 4h
     const generateBrief = async () => {
       setBriefLoading(true);
+      const fallback = `${echo.name}: I'm still getting to know you. Generate your first post so I can start understanding your voice.`;
       try {
         const { data: latest } = await supabase
           .from('echo_briefs')
@@ -90,14 +91,17 @@ const Dashboard = () => {
         if (isFresh) {
           setBrief(latest!.brief_content);
         } else {
-          const { data } = await supabase.functions.invoke('echo-generate', {
+          const { data, error } = await supabase.functions.invoke('echo-generate', {
             body: { type: 'brief', echo_id: echo.id },
           });
+          if (error) console.error('Brief generation error:', error);
           if (data?.content) setBrief(data.content);
           else if (latest) setBrief(latest.brief_content);
+          else setBrief(fallback);
         }
-      } catch {
-        setBrief("I've been thinking while you were away. Connect your AI backend to hear what I've been tracking.");
+      } catch (err) {
+        console.error('Brief fetch failed:', err);
+        setBrief(fallback);
       } finally {
         setBriefLoading(false);
       }
