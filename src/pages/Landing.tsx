@@ -274,7 +274,7 @@ const Landing = () => {
             transition={{ duration: 1 }}
             className="font-display text-2xl sm:text-3xl font-light leading-relaxed text-balance"
           >
-            We built Echo for people whose ideas <span className="italic">deserve</span> more time than they have.
+            For ideas that <span className="italic">deserve</span> more time than you have.
           </motion.p>
         </div>
       </section>
