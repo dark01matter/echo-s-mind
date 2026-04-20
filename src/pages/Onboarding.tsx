@@ -19,7 +19,7 @@ const STYLE_OPTIONS = [
   { value: 'blunt', label: 'Blunt & direct' },
 ];
 
-type Phase = 'niche' | 'name' | 'q1' | 'q2' | 'q3' | 'q4' | 'q5' | 'generating' | 'preview' | 'done';
+type Phase = 'niche' | 'name' | 'q1' | 'q2' | 'q3' | 'q4' | 'q5' | 'generating' | 'gen_failed' | 'preview' | 'done';
 
 interface Message {
   from: 'echo' | 'user';
@@ -44,17 +44,14 @@ const Onboarding = () => {
 
   const [draft, setDraft] = useState<{ content: string; stance_tag: string } | null>(null);
 
-  // Auto-scroll
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, phase]);
 
-  // Redirect if no user
   useEffect(() => {
     if (!user) navigate('/login');
   }, [user, navigate]);
 
-  // Open with Echo's first line once a niche is picked
   const pushEcho = (text: string) => setMessages(m => [...m, { from: 'echo', text }]);
   const pushUser = (text: string) => setMessages(m => [...m, { from: 'user', text }]);
 
@@ -116,10 +113,38 @@ const Onboarding = () => {
 
   const submitStyle = async (style: string) => {
     pushUser(STYLE_OPTIONS.find(o => o.value === style)?.label || style);
-    setAnswers(prev => ({ ...prev, '3': style }));
+    const merged = { ...answers, '3': style };
+    setAnswers(merged);
     await delay(500);
     pushEcho(QUESTIONS.q4.text(niche));
     setPhase('q4');
+  };
+
+  const generateFirstDraft = async (currentEchoId: string, allAnswers: Record<string, string>) => {
+    setPhase('generating');
+    setWorking(true);
+    try {
+      const { data: gen, error: genErr } = await supabase.functions.invoke('echo-generate', {
+        body: {
+          type: 'onboarding_post',
+          echo_id: currentEchoId,
+          onboarding_answers: allAnswers,
+          niche,
+        },
+      });
+      if (genErr || !gen?.content || gen?.error) {
+        console.error('First draft generation failed:', genErr || gen?.error);
+        setPhase('gen_failed');
+        return;
+      }
+      setDraft({ content: gen.content, stance_tag: gen.stance_tag || `On: ${niche}` });
+      setPhase('preview');
+    } catch (err) {
+      console.error('First draft generation threw:', err);
+      setPhase('gen_failed');
+    } finally {
+      setWorking(false);
+    }
   };
 
   const finalize = async (allAnswers: Record<string, string>) => {
@@ -129,7 +154,6 @@ const Onboarding = () => {
     setWorking(true);
 
     try {
-      // Create echo
       const { data: echoData, error: echoErr } = await supabase
         .from('echoes')
         .insert({
@@ -147,7 +171,6 @@ const Onboarding = () => {
       if (echoErr) throw echoErr;
       setEchoId(echoData.id);
 
-      // Save all 5 onboarding responses
       const responses = (['1','2','3','4','5'] as const).map((k) => ({
         echo_id: echoData.id,
         question_number: parseInt(k),
@@ -156,10 +179,23 @@ const Onboarding = () => {
       }));
       await supabase.from('onboarding_responses').insert(responses);
 
-      // Q1 → first belief
+      // Q1 → first belief — extract real topic via Gemini, NOT niche name
+      let beliefTopic = '';
+      try {
+        const { data: topicRes } = await supabase.functions.invoke('echo-generate', {
+          body: { type: 'extract_belief_topic', belief_text: allAnswers['1'] },
+        });
+        beliefTopic = (topicRes?.topic || '').trim();
+      } catch (err) {
+        console.error('belief topic extraction failed:', err);
+      }
+      if (!beliefTopic) {
+        beliefTopic = (allAnswers['1'] || '').trim().split(/\s+/).slice(0, 4).join(' ') || niche;
+      }
+
       await supabase.from('echo_beliefs').insert({
         echo_id: echoData.id,
-        topic: niche,
+        topic: beliefTopic,
         position: allAnswers['1'],
         reasoning: 'Stated explicitly during onboarding.',
         strength: 3,
@@ -167,46 +203,33 @@ const Onboarding = () => {
         is_active: true,
       });
 
-      // Q2 → echo_rules
       await supabase.from('echo_rules').insert({
         echo_id: echoData.id,
         rule_type: 'avoid_pattern',
         content: allAnswers['2'],
       });
 
-      // Q4 → seed_artifact memory (real prose sample)
       await supabase.from('echo_memories').insert({
         echo_id: echoData.id,
         memory_type: 'seed_artifact',
         content: allAnswers['4'],
       });
 
-      // Generate first post draft via edge function
-      const { data: gen, error: genErr } = await supabase.functions.invoke('echo-generate', {
-        body: {
-          type: 'onboarding_post',
-          echo_id: echoData.id,
-          onboarding_answers: allAnswers,
-          niche,
-        },
-      });
-
-      if (genErr || !gen?.content) {
-        // Fallback so user is never stuck
-        setDraft({
-          content: `${allAnswers['4']}\n\nMost people in ${niche} get this wrong because ${allAnswers['1']}. That is the part nobody wants to say out loud.`,
-          stance_tag: `On: ${niche}`,
-        });
-      } else {
-        setDraft({ content: gen.content, stance_tag: gen.stance_tag || `On: ${niche}` });
-      }
-      setPhase('preview');
+      await generateFirstDraft(echoData.id, allAnswers);
     } catch (err: any) {
       toast({ title: 'Something went wrong', description: err.message, variant: 'destructive' });
       setPhase('q5');
-    } finally {
       setWorking(false);
     }
+  };
+
+  const retryGeneration = async () => {
+    if (!echoId) return;
+    await generateFirstDraft(echoId, answers);
+  };
+
+  const skipFirstPost = () => {
+    navigate('/feed');
   };
 
   const approveAndPublish = async () => {
@@ -251,11 +274,11 @@ const Onboarding = () => {
             phase === 'q4' ? 'Calibration · 04 of 05' :
             phase === 'q5' ? 'Calibration · 05 of 05' :
             phase === 'generating' ? 'Synthesis' :
+            phase === 'gen_failed' ? 'Synthesis · Interrupted' :
             'First Draft'}
         </span>
       </header>
 
-      {/* Niche picker */}
       {phase === 'niche' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 flex flex-col justify-center px-4 py-8 max-w-xl mx-auto w-full">
           <div className="flex items-center gap-3 mb-6">
@@ -279,8 +302,32 @@ const Onboarding = () => {
         </motion.div>
       )}
 
-      {/* Conversation */}
-      {phase !== 'niche' && phase !== 'preview' && (
+      {phase === 'gen_failed' && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex-1 flex flex-col items-center justify-center px-4 py-8 max-w-xl mx-auto w-full text-center">
+          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-echo-purple to-echo-green flex items-center justify-center text-white text-lg font-bold mb-5">
+            {echoName.charAt(0).toUpperCase() || 'E'}
+          </div>
+          <p className="font-display text-lg text-foreground/95 mb-2">Echo is thinking — this took longer than expected.</p>
+          <p className="text-sm text-muted-foreground max-w-sm mb-8">No fake post will be saved. Try again, or skip to the feed and generate one later.</p>
+          <div className="flex gap-3 w-full max-w-xs">
+            <button
+              onClick={skipFirstPost}
+              className="flex-1 px-4 py-3 rounded-lg border border-white/10 bg-white/5 text-sm text-muted-foreground hover:bg-white/10 transition-colors"
+            >
+              Skip for now
+            </button>
+            <button
+              onClick={retryGeneration}
+              disabled={working}
+              className="flex-1 gradient-btn text-white text-sm font-medium px-4 py-3 rounded-lg transition-all disabled:opacity-50"
+            >
+              {working ? 'Retrying…' : 'Try again'}
+            </button>
+          </div>
+        </motion.div>
+      )}
+
+      {phase !== 'niche' && phase !== 'preview' && phase !== 'gen_failed' && (
         <>
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 max-w-xl mx-auto w-full space-y-4">
             <AnimatePresence initial={false}>
@@ -323,7 +370,6 @@ const Onboarding = () => {
             </AnimatePresence>
           </div>
 
-          {/* Input area */}
           <div className="border-t border-white/5 bg-background/80 backdrop-blur-md px-4 py-3 max-w-xl mx-auto w-full">
             {showInput && (
               <div className="space-y-2">
@@ -371,7 +417,6 @@ const Onboarding = () => {
         </>
       )}
 
-      {/* First post preview */}
       {phase === 'preview' && draft && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex-1 px-4 py-6 max-w-xl mx-auto w-full space-y-4 overflow-y-auto">
           <div className="flex items-center gap-3 mb-2">

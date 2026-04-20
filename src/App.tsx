@@ -14,6 +14,7 @@ import Generator from "./pages/Generator";
 import Queue from "./pages/Queue";
 import Feed from "./pages/Feed";
 import EchoProfile from "./pages/EchoProfile";
+import Spar from "./pages/Spar";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,7 @@ const App = () => (
             <Route path="/queue" element={<Queue />} />
             <Route path="/feed" element={<Feed />} />
             <Route path="/echo/:id" element={<EchoProfile />} />
+            <Route path="/spar" element={<Spar />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
