@@ -13,14 +13,34 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { type, echo_id, topic, angle, post_content, comment_content, onboarding_answers, niche: nicheArg } = body;
+    const { type, echo_id, topic, angle, post_content, comment_content, onboarding_answers, niche: nicheArg, belief_text } = body;
+
+    console.log("echo-generate called with type:", type, "echo_id:", echo_id);
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
+    if (!GEMINI_API_KEY) {
+      console.error("GEMINI_API_KEY missing");
+      throw new Error("GEMINI_API_KEY not configured");
+    }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // -------- EXTRACT BELIEF TOPIC: tiny call used by onboarding --------
+    if (type === "extract_belief_topic") {
+      const prompt = `From this belief statement, extract the specific topic in 2-4 words. Return only the topic, nothing else. Belief: ${belief_text || ""}`;
+      try {
+        const result = await callGemini(GEMINI_API_KEY, prompt);
+        const topic = (result || "").trim().replace(/^["']|["']$/g, "").split("\n")[0].slice(0, 80);
+        if (topic) return json({ topic });
+      } catch (err) {
+        console.error("extract_belief_topic gemini failed:", err);
+      }
+      // Fallback: first 4 words of the answer
+      const words = (belief_text || "").trim().split(/\s+/).slice(0, 4).join(" ");
+      return json({ topic: words || "Untitled belief" });
+    }
 
     // -------- ONBOARDING POST: special path that uses raw answers --------
     if (type === "onboarding_post") {
@@ -31,18 +51,17 @@ A real person just told you these things about themselves:
 - Belief most people would push back on: "${a["1"] || ""}"
 - Content style they hate: "${a["2"] || ""}"
 - How they argue: "${a["3"] || ""}"
-- What they keep thinking about right now: "${a["4"] || ""}"
+- Real prose sample they stand by: "${a["4"] || ""}"
 - How they want readers to feel: "${a["5"] || ""}"
 
 Write a single short post (under 200 words) that:
-- Sounds like that real person, not like AI.
-- Centers on what they keep thinking about (#4).
-- Carries their contrarian belief (#1) in some form.
+- Sounds like that real person, not like AI. Mimic the rhythm/voice of their prose sample (#4).
+- Centers on their contrarian belief (#1).
 - Avoids the patterns they hate (#2).
 - Uses their argument style (#3).
 - Aims to make the reader feel (#5).
 
-Take a clear position. Be specific. No hedging. No "in conclusion".
+Take a clear position. Be specific. No hedging. No "in conclusion". No bullet points. No "Most people get this wrong". No "nobody wants to say". No "Unpopular opinion".
 
 Reply ONLY as JSON: {"content": "the post", "stance_tag": "For: ... or Against: ... or On: ... in 4-7 words"}`;
 
@@ -115,13 +134,53 @@ ${ruleContext}`.trim();
 
     switch (type) {
       case "post": {
-        // Pick the most relevant belief and stance for richer voice grounding
         const topBelief = beliefs[0];
         const topStance = stances[0];
         const avoidPattern = rules[0]?.content || "generic AI-sounding hedged takes";
 
+        // Pull behavioral + training signals so collected data actually shapes output
+        let microContext = "";
+        let trainingContext = "";
+        let memoryShortContext = "";
+        try {
+          const { data: micros } = await supabase
+            .from("micro_interactions")
+            .select("response, comment, post_id, posts:posts(stance_tag, content)")
+            .eq("echo_id", echo_id)
+            .order("created_at", { ascending: false })
+            .limit(10);
+          if (micros && micros.length > 0) {
+            microContext = micros.map((m: any) =>
+              `- ${m.response.toUpperCase()} on "${m.posts?.stance_tag || (m.posts?.content || "").slice(0, 60)}"${m.comment ? ` (note: ${m.comment})` : ""}`
+            ).join("\n");
+          }
+        } catch (err) { console.error("micro_interactions fetch failed:", err); }
+
+        try {
+          const { data: trainings } = await supabase
+            .from("training_sessions")
+            .select("id, user_message")
+            .eq("echo_id", echo_id)
+            .eq("processed", false)
+            .order("created_at", { ascending: false })
+            .limit(3);
+          if (trainings && trainings.length > 0) {
+            trainingContext = trainings.map((t: any) => `- "${t.user_message}"`).join("\n");
+            const ids = trainings.map((t: any) => t.id);
+            await supabase.from("training_sessions").update({ processed: true }).in("id", ids);
+          }
+        } catch (err) { console.error("training_sessions fetch failed:", err); }
+
+        try {
+          const recent = memories.slice(0, 5);
+          if (recent.length > 0) {
+            memoryShortContext = recent.map((m: any) => `- ${m.content}`).join("\n");
+          }
+        } catch (err) { console.error("memory short context failed:", err); }
+
         systemPrompt = `You are ${echo.name}. You think and write like a real person who has genuine opinions, not like an AI assistant. Your niche is ${echo.niche}. Here is what you actually believe: ${topBelief ? `${topBelief.topic}: ${topBelief.position}` : "(no specific belief recorded yet — write from intuition)"}. Here is what annoys you about content in your space: ${avoidPattern}. When you explain things to people who disagree, you use ${echo.communication_style || "your own natural reasoning"}. You want people who read your posts to feel ${echo.desired_reader_feeling || "something real"}. You are currently most focused on this specific angle: ${topStance ? `${topStance.topic} — ${topStance.current_position}` : "(no active stance — pick one yourself)"}.
 
+${microContext ? `The owner has previously reacted to these positions:\n${microContext}\n` : ""}${trainingContext ? `The owner recently said this about their thinking:\n${trainingContext}\n` : ""}${memoryShortContext ? `Recent context about this Echo:\n${memoryShortContext}\n` : ""}
 Write a post that sounds exactly like this specific person wrote it at 11pm when they had a strong opinion they needed to express. Do not use any of these phrases or structures: "Most people get this wrong", "That is the part nobody wants to say out loud", "Here is what nobody tells you", "Unpopular opinion", "This is important", "Thread", or any other viral content formula.
 
 Do not use bullet points. Do not number things. Do not write a list.
@@ -156,14 +215,20 @@ Reply ONLY as JSON: {"content": "the post text", "stance_tag": "the specific tag
           `"${(p.content || "").substring(0, 60)}..." — ${p.likes_count} likes, ${p.comments_count} comments`
         ).join("\n") || "No posts yet.";
 
+        // News fetch isolated — failure must NOT block the brief
         let newsContext = "";
         try {
           const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(echo.niche)}&hl=en`;
-          const rssResponse = await fetch(rssUrl);
-          const rssText = await rssResponse.text();
-          const titles = rssText.match(/<title>(.*?)<\/title>/g)?.slice(1, 6) || [];
-          newsContext = titles.map(t => t.replace(/<\/?title>/g, "").replace(/<!\[CDATA\[|\]\]>/g, "")).join("\n");
-        } catch { newsContext = ""; }
+          const rssResponse = await fetch(rssUrl, { signal: AbortSignal.timeout(4000) });
+          if (rssResponse.ok) {
+            const rssText = await rssResponse.text();
+            const titles = rssText.match(/<title>(.*?)<\/title>/g)?.slice(1, 6) || [];
+            newsContext = titles.map(t => t.replace(/<\/?title>/g, "").replace(/<!\[CDATA\[|\]\]>/g, "")).join("\n");
+          }
+        } catch (err) {
+          console.error("RSS fetch failed (continuing without news):", err);
+          newsContext = "";
+        }
 
         systemPrompt = `${fullContext}
 
@@ -186,6 +251,41 @@ Reply to the content below as ${echo.name}. Reference your beliefs when relevant
         userPrompt = `Reply to this: "${post_content || comment_content}"`;
         break;
 
+      case "sparring": {
+        // Private debate mode — Echo plays counter-argument to user's documented belief
+        const topBelief = beliefs[0];
+        systemPrompt = `${fullContext}
+
+You are about to debate your own creator, in private. They want to publish something on the topic they will give you. Your job is to play their sharpest counter-argument — not to argue against their values, but to stress-test their thinking so the post they publish is more honest and harder to dismiss.
+
+Their documented belief on this space is: ${topBelief ? `"${topBelief.position}"` : "(no recorded belief)"}.
+
+Rules:
+- Speak in first person as ${echo.name}.
+- Open with the single strongest objection a thoughtful opponent would raise to whatever they just said.
+- Be specific, never generic. Reference real-world counter-evidence, edge cases, or who gets harmed.
+- 2-3 sentences max. End with one pointed question that forces them to defend or revise their position.
+- No flattery. No "great point". No hedging.`;
+        userPrompt = `The creator wants to post about: "${post_content || topic || "(no input)"}"\n\nGive your sharpest counter.`;
+        break;
+      }
+
+      case "sparring_refine": {
+        systemPrompt = `${fullContext}
+
+You have been debating your creator privately. Below is the full exchange. Now synthesize: write the refined version of their argument that survived your objections. This is what they would actually publish.
+
+Rules:
+- Speak in their voice, not yours. First person from the creator's perspective.
+- Use their communication_style: ${echo.communication_style || "natural reasoning"}.
+- Incorporate the strongest points they made and acknowledge (briefly) what they conceded.
+- 100-180 words. Take a clear position. No "I now realize". No bullet points.
+
+Reply ONLY as JSON: {"content": "the refined post", "stance_tag": "For/Against/On: [4-8 word specific claim]"}`;
+        userPrompt = `Debate transcript:\n${post_content || ""}\n\nWrite the refined post.`;
+        break;
+      }
+
       default:
         throw new Error(`Unknown type: ${type}`);
     }
@@ -193,7 +293,7 @@ Reply to the content below as ${echo.name}. Reference your beliefs when relevant
     const rawContent = await callGemini(GEMINI_API_KEY, `${systemPrompt}\n\n${userPrompt}`);
 
     let result: any;
-    if (type === "post") {
+    if (type === "post" || type === "sparring_refine") {
       result = parsePostJson(rawContent, topic || "this topic");
     } else {
       result = { content: rawContent.trim() };
@@ -220,6 +320,8 @@ async function callGemini(apiKey: string, prompt: string): Promise<string> {
   });
 
   if (!response.ok) {
+    const errBody = await response.text().catch(() => "");
+    console.error("Gemini API error:", response.status, errBody.slice(0, 500));
     if (response.status === 429) throw new Error("Rate limited. Try again shortly.");
     throw new Error(`Gemini API error: ${response.status}`);
   }

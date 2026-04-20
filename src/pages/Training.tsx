@@ -8,8 +8,8 @@ import { useNavigate } from 'react-router-dom';
 
 interface Checkin {
   id: string;
-  echo_response: string | null;       // the prompt Echo generated
-  user_message: string | null;        // creator's reply
+  echo_response: string | null;
+  user_message: string | null;
   created_at: string;
   processed: boolean;
 }
@@ -18,8 +18,9 @@ const Training = () => {
   const { echo } = useEcho();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [echoPrompt, setEchoPrompt] = useState('');
+  const [echoPrompt, setEchoPrompt] = useState<string | null>(null);
   const [promptLoading, setPromptLoading] = useState(false);
+  const [promptFailed, setPromptFailed] = useState(false);
   const [response, setResponse] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [history, setHistory] = useState<Checkin[]>([]);
@@ -34,32 +35,40 @@ const Training = () => {
     setHistory((data as Checkin[]) || []);
   };
 
+  const generatePrompt = async () => {
+    if (!echo) return;
+    setPromptLoading(true);
+    setPromptFailed(false);
+    try {
+      const { data, error } = await supabase.functions.invoke('echo-generate', {
+        body: { type: 'checkin', echo_id: echo.id },
+      });
+      if (error || !data?.content || data?.error) {
+        console.error('Checkin prompt failed:', error || data?.error);
+        setPromptFailed(true);
+        setEchoPrompt(null);
+      } else {
+        setEchoPrompt(data.content);
+      }
+    } catch (err) {
+      console.error('Checkin prompt threw:', err);
+      setPromptFailed(true);
+      setEchoPrompt(null);
+    } finally {
+      setPromptLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!echo) return;
-
-    const generatePrompt = async () => {
-      setPromptLoading(true);
-      try {
-        const { data } = await supabase.functions.invoke('echo-generate', {
-          body: { type: 'checkin', echo_id: echo.id },
-        });
-        setEchoPrompt(data?.content || "I've been reflecting on our recent discussions. What's been on your mind?");
-      } catch {
-        setEchoPrompt("I've been thinking about our conversations. What's your take on recent developments?");
-      } finally {
-        setPromptLoading(false);
-      }
-    };
-
     generatePrompt();
     fetchHistory(echo.id);
   }, [echo]);
 
   const handleSubmit = async () => {
-    if (!echo || !response.trim()) return;
+    if (!echo || !response.trim() || !echoPrompt) return;
     setSubmitting(true);
     try {
-      // Save training session: echo_response = the prompt Echo asked, user_message = creator's reply
       await supabase.from('training_sessions').insert({
         echo_id: echo.id,
         echo_response: echoPrompt,
@@ -101,7 +110,7 @@ const Training = () => {
       <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-white/5">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
           <button onClick={() => navigate('/dashboard')} className="text-sm text-muted-foreground hover:text-foreground">← Dashboard</button>
-          <span className="font-bold gradient-text">Daily Check-in</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Daily check-in</span>
           <div />
         </div>
       </header>
@@ -122,27 +131,39 @@ const Training = () => {
               <div className="h-4 bg-white/5 rounded animate-pulse w-3/4" />
               <div className="h-4 bg-white/5 rounded animate-pulse w-1/2" />
             </div>
-          ) : (
+          ) : promptFailed ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">{echo.name} couldn't form a question right now.</p>
+              <button
+                onClick={generatePrompt}
+                className="text-xs font-medium px-3 py-1.5 rounded-full border border-white/15 hover:border-white/40 hover:bg-white/5 transition-all"
+              >
+                Try again
+              </button>
+            </div>
+          ) : echoPrompt ? (
             <p className="text-sm text-foreground/90 leading-relaxed italic">"{echoPrompt}"</p>
-          )}
+          ) : null}
         </motion.div>
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="glass-card p-6">
-          <h3 className="text-sm font-medium mb-3">Your response</h3>
-          <Textarea
-            value={response}
-            onChange={(e) => setResponse(e.target.value)}
-            placeholder="Share your thoughts in 2-3 sentences..."
-            className="bg-white/5 border-white/10 min-h-[100px]"
-          />
-          <button
-            onClick={handleSubmit}
-            disabled={!response.trim() || submitting}
-            className="mt-3 w-full gradient-btn text-white font-medium py-2.5 rounded-lg text-sm transition-all disabled:opacity-50"
-          >
-            {submitting ? 'Processing...' : 'Submit Response'}
-          </button>
-        </motion.div>
+        {echoPrompt && !promptFailed && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="glass-card p-6">
+            <h3 className="text-sm font-medium mb-3">Your response</h3>
+            <Textarea
+              value={response}
+              onChange={(e) => setResponse(e.target.value)}
+              placeholder="Share your thoughts in 2-3 sentences..."
+              className="bg-white/5 border-white/10 min-h-[100px]"
+            />
+            <button
+              onClick={handleSubmit}
+              disabled={!response.trim() || submitting}
+              className="mt-3 w-full gradient-btn text-white font-medium py-2.5 rounded-lg text-sm transition-all disabled:opacity-50"
+            >
+              {submitting ? 'Processing...' : 'Submit Response'}
+            </button>
+          </motion.div>
+        )}
 
         {history.length > 0 && (
           <div className="space-y-4">

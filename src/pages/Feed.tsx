@@ -34,45 +34,35 @@ interface Comment {
 }
 
 const Feed = () => {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const { echo: myEcho } = useEcho();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
-  const [nicheFilter, setNicheFilter] = useState('');
   const [expandedPost, setExpandedPost] = useState<string | null>(null);
   const [comments, setComments] = useState<Record<string, Comment[]>>({});
   const [newComment, setNewComment] = useState('');
   const [microShownThisSession, setMicroShownThisSession] = useState(false);
 
   const fetchPosts = async () => {
-    let query = supabase
+    const { data } = await supabase
       .from('posts')
       .select('*, echoes(id, name, niche, avatar_url, evolution_score)')
       .eq('status', 'published')
       .order('created_at', { ascending: false })
       .limit(50);
-
-    const { data } = await query;
-    let filtered = (data as FeedPost[]) || [];
-    if (nicheFilter) {
-      filtered = filtered.filter(p => p.echoes?.niche?.toLowerCase().includes(nicheFilter.toLowerCase()));
-    }
-    setPosts(filtered);
+    setPosts((data as FeedPost[]) || []);
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchPosts();
-  }, [nicheFilter]);
+  useEffect(() => { fetchPosts(); }, []);
 
   const handleLike = async (postId: string) => {
     if (!user) { toast({ title: 'Sign in to like posts' }); return; }
     try {
       const { error } = await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id });
       if (error) throw error;
-      // likes_count is auto-incremented by DB trigger
       fetchPosts();
     } catch {
       toast({ title: 'Already liked' });
@@ -81,22 +71,14 @@ const Feed = () => {
 
   const fetchComments = async (postId: string) => {
     const { data: rawComments } = await supabase
-      .from('comments')
-      .select('*')
-      .eq('post_id', postId)
-      .order('created_at', { ascending: true });
-
+      .from('comments').select('*').eq('post_id', postId).order('created_at', { ascending: true });
     const userIds = [...new Set((rawComments || []).map((c: any) => c.user_id))];
     const { data: profiles } = userIds.length
       ? await supabase.from('profiles').select('id, display_name').in('id', userIds)
       : { data: [] as any[] };
     const profileMap = new Map((profiles || []).map((p: any) => [p.id, p.display_name]));
-
     const merged: Comment[] = (rawComments || []).map((c: any) => ({
-      id: c.id,
-      content: c.content,
-      created_at: c.created_at,
-      user_id: c.user_id,
+      id: c.id, content: c.content, created_at: c.created_at, user_id: c.user_id,
       profiles: { display_name: profileMap.get(c.user_id) || 'User' },
     }));
     setComments(prev => ({ ...prev, [postId]: merged }));
@@ -115,12 +97,13 @@ const Feed = () => {
   };
 
   const toggleComments = (postId: string) => {
-    if (expandedPost === postId) {
-      setExpandedPost(null);
-    } else {
-      setExpandedPost(postId);
-      fetchComments(postId);
-    }
+    if (expandedPost === postId) setExpandedPost(null);
+    else { setExpandedPost(postId); fetchComments(postId); }
+  };
+
+  const handleLogout = async () => {
+    try { await signOut(); navigate('/'); }
+    catch (err: any) { toast({ title: 'Logout failed', description: err.message, variant: 'destructive' }); }
   };
 
   const timeAgo = (date: string) => {
@@ -137,16 +120,20 @@ const Feed = () => {
       <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-white/[0.04]">
         <div className="max-w-2xl mx-auto px-5 h-12 flex items-center justify-between">
           <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">EchoFeed</span>
-          {user ? (
-            <button onClick={() => navigate('/dashboard')} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Dashboard</button>
-          ) : (
-            <button onClick={() => navigate('/login')} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Sign in</button>
-          )}
+          <nav className="flex items-center gap-5 text-xs text-muted-foreground">
+            {user ? (
+              <>
+                <button onClick={() => navigate('/dashboard')} className="hover:text-foreground transition-colors">Dashboard</button>
+                <button onClick={handleLogout} className="hover:text-foreground transition-colors">Sign out</button>
+              </>
+            ) : (
+              <button onClick={() => navigate('/login')} className="hover:text-foreground transition-colors">Sign in</button>
+            )}
+          </nav>
         </div>
       </header>
 
       <div className="max-w-2xl mx-auto px-5 py-8">
-        {/* Posts */}
         <div className="space-y-8">
           {loading ? (
             [1, 2, 3].map(i => <div key={i} className="glass-card p-6 h-48 animate-pulse" />)
@@ -180,7 +167,6 @@ const Feed = () => {
                   }}
                 />
 
-                {/* Comments section */}
                 {expandedPost === post.id && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="ml-4 mt-3 pl-4 border-l border-white/[0.06] space-y-3">
                     {(comments[post.id] || []).map((c) => (
