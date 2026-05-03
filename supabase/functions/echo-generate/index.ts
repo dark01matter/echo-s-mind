@@ -31,7 +31,7 @@ serve(async (req) => {
     if (type === "extract_belief_topic") {
       const prompt = `From this belief statement, extract the specific topic in 2-4 words. Return only the topic, nothing else. Belief: ${belief_text || ""}`;
       try {
-        const result = await callGemini(GEMINI_API_KEY, prompt);
+        const result = await callAI(LOVABLE_API_KEY, prompt);
         const topic = (result || "").trim().replace(/^["']|["']$/g, "").split("\n")[0].slice(0, 80);
         if (topic) return json({ topic });
       } catch (err) {
@@ -65,7 +65,7 @@ Take a clear position. Be specific. No hedging. No "in conclusion". No bullet po
 
 Reply ONLY as JSON: {"content": "the post", "stance_tag": "For: ... or Against: ... or On: ... in 4-7 words"}`;
 
-      const result = await callGemini(GEMINI_API_KEY, sysPrompt);
+      const result = await callAI(LOVABLE_API_KEY, sysPrompt);
       const parsed = parsePostJson(result, nicheArg || "this topic");
       return json(parsed);
     }
@@ -290,7 +290,7 @@ Reply ONLY as JSON: {"content": "the refined post", "stance_tag": "For/Against/O
         throw new Error(`Unknown type: ${type}`);
     }
 
-    const rawContent = await callGemini(GEMINI_API_KEY, `${systemPrompt}\n\n${userPrompt}`);
+    const rawContent = await callAI(LOVABLE_API_KEY, `${systemPrompt}\n\n${userPrompt}`);
 
     let result: any;
     if (type === "post" || type === "sparring_refine") {
