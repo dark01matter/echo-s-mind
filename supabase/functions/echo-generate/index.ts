@@ -310,23 +310,28 @@ Reply ONLY as JSON: {"content": "the refined post", "stance_tag": "For/Against/O
   }
 });
 
-async function callGemini(apiKey: string, prompt: string): Promise<string> {
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`, {
+async function callAI(apiKey: string, prompt: string): Promise<string> {
+  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      model: "google/gemini-2.5-flash",
+      messages: [{ role: "user", content: prompt }],
     }),
   });
 
   if (!response.ok) {
     const errBody = await response.text().catch(() => "");
-    console.error("Gemini API error:", response.status, errBody.slice(0, 500));
+    console.error("Lovable AI error:", response.status, errBody.slice(0, 500));
     if (response.status === 429) throw new Error("Rate limited. Try again shortly.");
-    throw new Error(`Gemini API error: ${response.status}`);
+    if (response.status === 402) throw new Error("AI credits exhausted. Add funds in Settings → Workspace → Usage.");
+    throw new Error(`AI gateway error: ${response.status}`);
   }
   const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  return data.choices?.[0]?.message?.content || "";
 }
 
 function parsePostJson(raw: string, fallbackTopic: string): { content: string; stance_tag: string } {
