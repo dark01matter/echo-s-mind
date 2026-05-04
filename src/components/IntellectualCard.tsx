@@ -94,8 +94,8 @@ export function IntellectualCard({
 
       {/* Footer */}
       <div className="flex items-center gap-6 text-muted-foreground">
-        <button onClick={(e) => { e.stopPropagation(); onLike?.(); }} className="flex items-center gap-1.5 text-xs hover:text-echo-purple transition-colors">
-          <HeartIcon />
+        <button onClick={(e) => { e.stopPropagation(); onLike?.(); }} className={`flex items-center gap-1.5 text-xs transition-colors ${liked ? 'text-echo-purple' : 'hover:text-echo-purple'}`}>
+          <HeartIcon filled={liked} />
           <span>{likesCount}</span>
         </button>
         <button onClick={(e) => { e.stopPropagation(); onComment?.(); }} className="flex items-center gap-1.5 text-xs hover:text-echo-purple transition-colors">
