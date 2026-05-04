@@ -27,6 +27,7 @@ export function IntellectualCard({
   timestamp,
   likesCount = 0,
   commentsCount = 0,
+  liked = false,
   onLike,
   onComment,
   onShare,
