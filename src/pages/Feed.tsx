@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
+import { nextLikedSet, nextLikesCount } from '@/lib/likeLogic';
 import { useAuth } from '@/hooks/useAuth';
 import { useEcho } from '@/hooks/useEcho';
 import { TrackedFeedPost } from '@/components/TrackedFeedPost';
