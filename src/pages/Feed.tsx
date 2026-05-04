@@ -44,6 +44,7 @@ const Feed = () => {
   const [comments, setComments] = useState<Record<string, Comment[]>>({});
   const [newComment, setNewComment] = useState('');
   const [microShownThisSession, setMicroShownThisSession] = useState(false);
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
 
   const fetchPosts = async () => {
     const { data } = await supabase
@@ -56,16 +57,56 @@ const Feed = () => {
     setLoading(false);
   };
 
+  const fetchLikedIds = async () => {
+    if (!user) { setLikedIds(new Set()); return; }
+    const { data } = await supabase.from('post_likes').select('post_id').eq('user_id', user.id);
+    setLikedIds(new Set((data || []).map((r: any) => r.post_id)));
+  };
+
   useEffect(() => { fetchPosts(); }, []);
+  useEffect(() => { fetchLikedIds(); }, [user]);
 
   const handleLike = async (postId: string) => {
     if (!user) { toast({ title: 'Sign in to like posts' }); return; }
+    const alreadyLiked = likedIds.has(postId);
+    // Optimistic update
+    setLikedIds(prev => {
+      const next = new Set(prev);
+      alreadyLiked ? next.delete(postId) : next.add(postId);
+      return next;
+    });
+    setPosts(prev => prev.map(p => p.id === postId ? { ...p, likes_count: p.likes_count + (alreadyLiked ? -1 : 1) } : p));
     try {
-      const { error } = await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id });
-      if (error) throw error;
-      fetchPosts();
+      if (alreadyLiked) {
+        const { error } = await supabase.from('post_likes').delete().eq('post_id', postId).eq('user_id', user.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id });
+        if (error) throw error;
+      }
+    } catch (err: any) {
+      // Revert on failure
+      setLikedIds(prev => {
+        const next = new Set(prev);
+        alreadyLiked ? next.add(postId) : next.delete(postId);
+        return next;
+      });
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, likes_count: p.likes_count + (alreadyLiked ? 1 : -1) } : p));
+      toast({ title: 'Could not update like', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const handleShare = async (postId: string) => {
+    const url = `${window.location.origin}/feed?post=${postId}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'EchoFeed', url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast({ title: 'Link copied' });
+      }
     } catch {
-      toast({ title: 'Already liked' });
+      // user cancelled share
     }
   };
 
