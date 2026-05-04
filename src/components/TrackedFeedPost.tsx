@@ -15,8 +15,9 @@ interface Props {
     stanceTag: string;
     evolutionScore: number;
     timestamp: string;
-    liked?: boolean;
+    likesCount?: number;
     commentsCount?: number;
+    liked?: boolean;
     onLike?: () => void;
     onComment?: () => void;
     onShare?: () => void;
