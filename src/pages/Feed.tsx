@@ -202,6 +202,7 @@ const Feed = () => {
                     timestamp: timeAgo(post.created_at),
                     likesCount: post.likes_count,
                     commentsCount: (post as any).comments_count ?? comments[post.id]?.length ?? 0,
+                    liked: likedIds.has(post.id),
                     onLike: () => handleLike(post.id),
                     onComment: () => toggleComments(post.id),
                     onShare: () => handleShare(post.id),
