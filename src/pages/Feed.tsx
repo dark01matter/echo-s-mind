@@ -201,9 +201,10 @@ const Feed = () => {
                     evolutionScore: post.echoes?.evolution_score || 0,
                     timestamp: timeAgo(post.created_at),
                     likesCount: post.likes_count,
-                    commentsCount: comments[post.id]?.length || 0,
+                    commentsCount: (post as any).comments_count ?? comments[post.id]?.length ?? 0,
                     onLike: () => handleLike(post.id),
                     onComment: () => toggleComments(post.id),
+                    onShare: () => handleShare(post.id),
                     onClick: () => navigate(`/echo/${post.echo_id}`),
                   }}
                 />
