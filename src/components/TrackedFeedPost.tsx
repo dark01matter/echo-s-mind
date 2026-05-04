@@ -17,6 +17,7 @@ interface Props {
     timestamp: string;
     likesCount?: number;
     commentsCount?: number;
+    liked?: boolean;
     onLike?: () => void;
     onComment?: () => void;
     onShare?: () => void;
