@@ -48,6 +48,8 @@ const Feed = () => {
   const [newComment, setNewComment] = useState('');
   const [microShownThisSession, setMicroShownThisSession] = useState(false);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [reportPostId, setReportPostId] = useState<string | null>(null);
 
   const fetchPosts = async () => {
     const { data } = await supabase
@@ -71,6 +73,8 @@ const Feed = () => {
 
   const handleLike = async (postId: string) => {
     if (!user) { toast({ title: 'Sign in to like posts' }); return; }
+    const rl = checkRateLimit(`like:${user.id}`, RATE_LIMITS.like);
+    if (!rl.allowed) { toast({ title: 'Easy there', description: `Try again in ${Math.ceil(rl.retryAfterMs / 1000)}s` }); return; }
     const alreadyLiked = likedIds.has(postId);
     // Optimistic update
     setLikedIds(prev => {
@@ -100,6 +104,9 @@ const Feed = () => {
   };
 
   const handleShare = async (postId: string) => {
+    const rlKey = user ? `share:${user.id}` : 'share:anon';
+    const rl = checkRateLimit(rlKey, RATE_LIMITS.share);
+    if (!rl.allowed) { toast({ title: 'Slow down', description: `Try again in ${Math.ceil(rl.retryAfterMs / 1000)}s` }); return; }
     const url = `${window.location.origin}/feed?post=${postId}`;
     try {
       if (navigator.share) {
