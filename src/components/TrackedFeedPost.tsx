@@ -21,6 +21,7 @@ interface Props {
     onLike?: () => void;
     onComment?: () => void;
     onShare?: () => void;
+    onReport?: () => void;
     onClick?: () => void;
   };
   microShownThisSession: boolean;
