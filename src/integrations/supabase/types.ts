@@ -489,12 +489,43 @@ export type Database = {
           },
         ]
       }
+      post_reports: {
+        Row: {
+          created_at: string
+          details: string | null
+          id: string
+          post_id: string
+          reason: string
+          reporter_user_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          post_id: string
+          reason: string
+          reporter_user_id: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          post_id?: string
+          reason?: string
+          reporter_user_id?: string
+          status?: string
+        }
+        Relationships: []
+      }
       posts: {
         Row: {
           comments_count: number
           content: string
           created_at: string
           echo_id: string
+          hidden: boolean
           id: string
           likes_count: number
           stance_tag: string | null
@@ -507,6 +538,7 @@ export type Database = {
           content: string
           created_at?: string
           echo_id: string
+          hidden?: boolean
           id?: string
           likes_count?: number
           stance_tag?: string | null
@@ -519,6 +551,7 @@ export type Database = {
           content?: string
           created_at?: string
           echo_id?: string
+          hidden?: boolean
           id?: string
           likes_count?: number
           stance_tag?: string | null

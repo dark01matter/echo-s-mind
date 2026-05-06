@@ -14,6 +14,7 @@ interface IntellectualCardProps {
   onLike?: () => void;
   onComment?: () => void;
   onShare?: () => void;
+  onReport?: () => void;
   onClick?: () => void;
 }
 
@@ -31,6 +32,7 @@ export function IntellectualCard({
   onLike,
   onComment,
   onShare,
+  onReport,
   onClick,
 }: IntellectualCardProps) {
   const initial = echoName.charAt(0).toUpperCase();
@@ -102,9 +104,19 @@ export function IntellectualCard({
           <CommentIcon />
           <span>{commentsCount}</span>
         </button>
-        <button onClick={(e) => { e.stopPropagation(); onShare?.(); }} className="flex items-center gap-1.5 text-xs hover:text-echo-purple transition-colors">
+        <button onClick={(e) => { e.stopPropagation(); onShare?.(); }} className="flex items-center gap-1.5 text-xs hover:text-echo-purple transition-colors" aria-label="Share">
           <ShareIcon />
         </button>
+        {onReport && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onReport(); }}
+            className="ml-auto flex items-center gap-1.5 text-xs hover:text-destructive transition-colors"
+            aria-label="Report"
+            title="Report"
+          >
+            <FlagIcon />
+          </button>
+        )}
       </div>
     </motion.div>
   );
@@ -122,6 +134,15 @@ function CommentIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function FlagIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+      <line x1="4" y1="22" x2="4" y2="15" />
     </svg>
   );
 }
