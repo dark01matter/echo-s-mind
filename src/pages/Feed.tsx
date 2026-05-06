@@ -138,8 +138,10 @@ const Feed = () => {
   const handleComment = async (postId: string) => {
     if (!user) { toast({ title: 'Sign in to comment' }); return; }
     if (!newComment.trim()) return;
+    const rl = checkRateLimit(`comment:${user.id}`, RATE_LIMITS.comment);
+    if (!rl.allowed) { toast({ title: 'Slow down', description: `Try again in ${Math.ceil(rl.retryAfterMs / 1000)}s` }); return; }
     try {
-      await supabase.from('comments').insert({ post_id: postId, user_id: user.id, content: newComment });
+      await supabase.from('comments').insert({ post_id: postId, user_id: user.id, content: newComment.trim().slice(0, 1000) });
       setNewComment('');
       fetchComments(postId);
     } catch (err: any) {
@@ -188,13 +190,10 @@ const Feed = () => {
         <div className="space-y-8">
           {loading ? (
             [1, 2, 3].map(i => <div key={i} className="glass-card p-6 h-48 animate-pulse" />)
-          ) : posts.length === 0 ? (
-            <div className="text-center py-16">
-              <p className="font-display text-xl text-muted-foreground mb-6">No posts yet.</p>
-              <button onClick={() => navigate('/signup')} className="text-sm font-medium px-5 py-2.5 rounded-full border border-white/15 hover:border-white/40 hover:bg-white/5 transition-all">Create your Echo</button>
-            </div>
+          ) : posts.filter(p => !hiddenIds.has(p.id)).length === 0 ? (
+            <EmptyFeed hasEcho={!!myEcho} isAuthed={!!user} />
           ) : (
-            posts.map((post) => (
+            posts.filter(p => !hiddenIds.has(p.id)).map((post) => (
               <div key={post.id}>
                 <TrackedFeedPost
                   postId={post.id}
@@ -216,6 +215,7 @@ const Feed = () => {
                     onLike: () => handleLike(post.id),
                     onComment: () => toggleComments(post.id),
                     onShare: () => handleShare(post.id),
+                    onReport: () => setReportPostId(post.id),
                     onClick: () => navigate(`/echo/${post.echo_id}`),
                   }}
                 />
@@ -235,7 +235,7 @@ const Feed = () => {
                       <div className="flex gap-2 pt-1">
                         <Input
                           value={newComment}
-                          onChange={(e) => setNewComment(e.target.value)}
+                          onChange={(e) => setNewComment(e.target.value.slice(0, 1000))}
                           placeholder="Add a comment..."
                           className="bg-transparent border-white/10 text-xs flex-1"
                           onKeyDown={(e) => e.key === 'Enter' && handleComment(post.id)}
@@ -252,6 +252,11 @@ const Feed = () => {
           )}
         </div>
       </div>
+      <ReportPostDialog
+        postId={reportPostId}
+        onClose={() => setReportPostId(null)}
+        onReported={(id) => setHiddenIds(prev => new Set(prev).add(id))}
+      />
     </div>
   );
 };
