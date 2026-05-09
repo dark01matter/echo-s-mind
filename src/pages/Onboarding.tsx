@@ -299,6 +299,37 @@ const Onboarding = () => {
               </button>
             ))}
           </div>
+          <div className="mt-4">
+            <p className="text-xs text-muted-foreground mb-2">Don't see your field? Type it in.</p>
+            <div className="flex gap-2">
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && input.trim().length >= 2) {
+                    e.preventDefault();
+                    const v = input.trim();
+                    setInput('');
+                    handleNicheSelect(v);
+                  }
+                }}
+                placeholder="e.g. Law, Marketing, Literature..."
+                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-echo-purple focus:outline-none"
+              />
+              <button
+                onClick={() => {
+                  if (input.trim().length < 2) return;
+                  const v = input.trim();
+                  setInput('');
+                  handleNicheSelect(v);
+                }}
+                disabled={input.trim().length < 2}
+                className="gradient-btn text-white text-sm font-medium px-4 rounded-xl transition-all disabled:opacity-30"
+              >
+                Use →
+              </button>
+            </div>
+          </div>
         </motion.div>
       )}
 

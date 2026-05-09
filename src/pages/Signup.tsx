@@ -18,14 +18,9 @@ const Signup = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const { session } = await signUp(email, password, displayName);
-      if (session) {
-        toast({ title: 'Welcome!', description: 'Your account is ready.' });
-        navigate('/onboarding');
-      } else {
-        toast({ title: 'Check your email', description: 'We sent you a confirmation link.' });
-        navigate('/login');
-      }
+      await signUp(email, password, displayName);
+      toast({ title: 'Welcome!', description: 'Your account is ready.' });
+      navigate('/onboarding');
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     } finally {
