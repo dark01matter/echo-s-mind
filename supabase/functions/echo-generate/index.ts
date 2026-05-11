@@ -324,6 +324,41 @@ Reply ONLY as JSON: {"content": "the refined post", "stance_tag": "For/Against/O
     let result: any;
     if (type === "post" || type === "sparring_refine") {
       result = parsePostJson(rawContent, topic || "this topic");
+
+      // Self-critique pass for "post" only — model critiques its own draft against quality bar + beliefs, then revises.
+      // Adds ~1 extra LLM call per post but only on direct generation (not sparring/onboarding).
+      if (type === "post") {
+        try {
+          const critiquePrompt = `You are ${echo.name}'s editor. Below is a draft post. Score it 1-10 against this rubric:
+1. Does it ADVANCE the idea (not restate the topic)?
+2. Does it contain a non-obvious claim, prediction, or reframing?
+3. Does it include a concrete artifact (number, named example, mechanism)?
+4. Does it take ONE clear position without hedging?
+5. Is it free of viral templates and AI-isms?
+
+Echo's core beliefs (revise to align if conflict):
+${beliefContext}
+
+Draft:
+"""
+${result.content}
+"""
+
+If score is 8+, reply ONLY: {"keep": true}
+If score is below 8, return a revised version that fixes the weaknesses. Same length budget (80-200 words). Reply ONLY: {"keep": false, "content": "revised post", "stance_tag": "specific tag"}`;
+          const critiqueRaw = await callAI(LOVABLE_API_KEY, critiquePrompt);
+          const cleaned = critiqueRaw.replace(/```json\n?|\n?```/g, "").trim();
+          const critique = JSON.parse(cleaned);
+          if (critique && critique.keep === false && critique.content) {
+            result = {
+              content: critique.content,
+              stance_tag: critique.stance_tag || result.stance_tag,
+            };
+          }
+        } catch (err) {
+          console.error("self-critique skipped:", err);
+        }
+      }
     } else {
       result = { content: rawContent.trim() };
     }
