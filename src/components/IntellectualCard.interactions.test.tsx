@@ -8,7 +8,6 @@ describe('IntellectualCard interactions', () => {
     niche: 'AI',
     content: 'Hot take',
     stanceTag: 'BOLD',
-    evolutionScore: 42,
     timestamp: '1m ago',
     likesCount: 3,
     commentsCount: 1,

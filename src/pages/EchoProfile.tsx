@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { IntellectualCard } from '@/components/IntellectualCard';
+import { useAuth } from '@/hooks/useAuth';
+import { useFollows } from '@/hooks/useFollows';
 
 interface EchoProfile {
   id: string;
@@ -11,7 +13,9 @@ interface EchoProfile {
   backstory: string;
   tone: string;
   avatar_url: string | null;
-  evolution_score: number;
+  user_id: string;
+  followers_count: number;
+  reflection_count: number;
   created_at: string;
 }
 
@@ -30,9 +34,17 @@ interface Stance {
   created_at: string;
 }
 
+const formatCount = (n: number) => {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  return n.toString();
+};
+
 const EchoProfilePage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { followedIds, toggleFollow } = useFollows();
   const [echo, setEcho] = useState<EchoProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [stances, setStances] = useState<Stance[]>([]);
@@ -43,7 +55,7 @@ const EchoProfilePage = () => {
     const fetch = async () => {
       const { data: echoData } = await supabase.from('echoes').select('*').eq('id', id).single();
       if (echoData) {
-        setEcho(echoData);
+        setEcho(echoData as any);
         const { data: postsData } = await supabase
           .from('posts')
           .select('*')
@@ -81,6 +93,14 @@ const EchoProfilePage = () => {
     return <div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground">Echo not found</div>;
   }
 
+  const isOwn = !!user && echo.user_id === user.id;
+  const isFollowing = followedIds.has(echo.id);
+
+  const handleFollow = () => {
+    toggleFollow(echo.id, echo.user_id);
+    setEcho(prev => prev ? { ...prev, followers_count: Math.max(0, (prev.followers_count || 0) + (isFollowing ? -1 : 1)) } : prev);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-white/5">
@@ -108,25 +128,34 @@ const EchoProfilePage = () => {
           </div>
           <p className="text-sm text-muted-foreground mt-3 max-w-md mx-auto">{echo.backstory}</p>
 
-          {/* Evolution Bar */}
-          <div className="mt-6 max-w-xs mx-auto">
-            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-              <span>Evolution</span>
-              <span className="text-echo-purple font-mono">{echo.evolution_score}%</span>
+          {/* Stats row — meaningful counters */}
+          <div className="mt-6 flex items-center justify-center gap-8 text-sm">
+            <div>
+              <p className="font-mono text-lg text-foreground">{formatCount(echo.followers_count || 0)}</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground mt-0.5">Followers</p>
             </div>
-            <div className="h-2 rounded-full bg-muted overflow-hidden">
-              <motion.div
-                className="h-full rounded-full bg-gradient-to-r from-echo-purple to-echo-green"
-                initial={{ width: 0 }}
-                animate={{ width: `${Math.min(echo.evolution_score, 100)}%` }}
-                transition={{ duration: 1.5, ease: 'easeOut' }}
-              />
+            <div>
+              <p className="font-mono text-lg text-foreground">{posts.length}</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground mt-0.5">Posts</p>
+            </div>
+            <div>
+              <p className="font-mono text-lg text-foreground">{echo.reflection_count || 0}</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground mt-0.5">Reflections</p>
             </div>
           </div>
 
-          <button className="mt-4 gradient-btn text-white text-sm font-medium px-6 py-2 rounded-lg transition-all">
-            Follow
-          </button>
+          {!isOwn && (
+            <button
+              onClick={handleFollow}
+              className={`mt-5 text-sm font-medium px-6 py-2 rounded-full transition-all border ${
+                isFollowing
+                  ? 'border-white/15 text-foreground/80 hover:border-destructive/40 hover:text-destructive hover:bg-destructive/5'
+                  : 'border-transparent bg-foreground text-background hover:bg-foreground/90'
+              }`}
+            >
+              {isFollowing ? 'Following' : 'Follow'}
+            </button>
+          )}
         </motion.div>
 
         {/* Public Stances */}
@@ -158,9 +187,12 @@ const EchoProfilePage = () => {
               avatarUrl={echo.avatar_url}
               content={post.content}
               stanceTag={post.stance_tag}
-              evolutionScore={echo.evolution_score}
               timestamp={timeAgo(post.created_at)}
               likesCount={post.likes_count}
+              followersCount={echo.followers_count}
+              isFollowing={isFollowing}
+              isOwn={isOwn}
+              onFollow={handleFollow}
             />
           ))}
           {posts.length === 0 && (

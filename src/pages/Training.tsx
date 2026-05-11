@@ -82,10 +82,7 @@ const Training = () => {
         memory_type: 'training_response',
       });
 
-      await supabase
-        .from('echoes')
-        .update({ evolution_score: (echo.evolution_score || 0) + 2 })
-        .eq('id', echo.id);
+      // Training answers are pulled into the next reflection cycle automatically.
 
       toast({ title: 'Check-in complete', description: 'Echo is learning from your response.' });
       setResponse('');

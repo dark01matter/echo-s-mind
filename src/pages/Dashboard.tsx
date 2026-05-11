@@ -176,10 +176,10 @@ const Dashboard = () => {
         <div className="hairline" />
         <div className="grid grid-cols-4 gap-4">
           {[
-            { label: 'Evolution', value: `${echo.evolution_score}%` },
+            { label: 'Followers', value: ((echo as any).followers_count || 0).toString() },
             { label: 'Posts', value: stats.posts.toString() },
             { label: 'Likes', value: stats.likes.toString() },
-            { label: 'Debates', value: stats.debates.toString() },
+            { label: 'Reflections', value: ((echo as any).reflection_count || 0).toString() },
           ].map((stat) => (
             <div key={stat.label}>
               <p className="font-mono text-xl text-foreground">{stat.value}</p>

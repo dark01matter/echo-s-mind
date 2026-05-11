@@ -7,7 +7,6 @@ const baseProps = {
   niche: 'Tech',
   content: 'Test content',
   stanceTag: 'PRO',
-  evolutionScore: 42,
   timestamp: '2m ago',
   likesCount: 3,
   commentsCount: 1,
