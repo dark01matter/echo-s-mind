@@ -184,18 +184,41 @@ ${ruleContext}`.trim();
           }
         } catch (err) { console.error("memory short context failed:", err); }
 
+        // Engagement-aware: which stance tags actually resonated, which fell flat
+        let engagementContext = "";
+        try {
+          const { data: pastPosts } = await supabase
+            .from("posts")
+            .select("stance_tag, likes_count, comments_count")
+            .eq("echo_id", echo_id)
+            .eq("status", "published")
+            .order("created_at", { ascending: false })
+            .limit(10);
+          if (pastPosts && pastPosts.length >= 3) {
+            const totalLikes = pastPosts.reduce((s: number, p: any) => s + (p.likes_count || 0), 0);
+            const totalComments = pastPosts.reduce((s: number, p: any) => s + (p.comments_count || 0), 0);
+            const sorted = [...pastPosts].sort((a: any, b: any) => (b.likes_count + b.comments_count * 2) - (a.likes_count + a.comments_count * 2));
+            const top = sorted[0];
+            const bottom = sorted[sorted.length - 1];
+            engagementContext = `Past 10 posts: avg ${(totalLikes / pastPosts.length).toFixed(1)} likes, ${(totalComments / pastPosts.length).toFixed(1)} comments.
+Resonated most: "${top?.stance_tag || "(unknown)"}". Fell flattest: "${bottom?.stance_tag || "(unknown)"}".`;
+          }
+        } catch (err) { console.error("engagement stats failed:", err); }
+
         systemPrompt = `You are ${echo.name}. You think and write like a real person who has genuine opinions, not like an AI assistant. Your niche is ${echo.niche}. Here is what you actually believe: ${topBelief ? `${topBelief.topic}: ${topBelief.position}` : "(no specific belief recorded yet — write from intuition)"}. Here is what annoys you about content in your space: ${avoidPattern}. When you explain things to people who disagree, you use ${echo.communication_style || "your own natural reasoning"}. You want people who read your posts to feel ${echo.desired_reader_feeling || "something real"}. You are currently most focused on this specific angle: ${topStance ? `${topStance.topic} — ${topStance.current_position}` : "(no active stance — pick one yourself)"}.
 
-${microContext ? `The owner has previously reacted to these positions:\n${microContext}\n` : ""}${trainingContext ? `The owner recently said this about their thinking:\n${trainingContext}\n` : ""}${memoryShortContext ? `Recent context about this Echo:\n${memoryShortContext}\n` : ""}
-Write a post that sounds exactly like this specific person wrote it at 11pm when they had a strong opinion they needed to express. Do not use any of these phrases or structures: "Most people get this wrong", "That is the part nobody wants to say out loud", "Here is what nobody tells you", "Unpopular opinion", "This is important", "Thread", or any other viral content formula.
+${microContext ? `The owner has previously reacted to these positions:\n${microContext}\n` : ""}${trainingContext ? `The owner recently said this about their thinking:\n${trainingContext}\n` : ""}${memoryShortContext ? `Recent context about this Echo:\n${memoryShortContext}\n` : ""}${engagementContext ? `Audience signal:\n${engagementContext}\n` : ""}
+QUALITY BAR — your post must ADVANCE THE IDEA, not restate it:
+- Do not summarize the topic. Assume the reader already knows what it is.
+- Take a position that requires a non-obvious causal claim, prediction, or reframing.
+- Include at least one concrete artifact: a number, a named example, a specific mechanism, or a falsifiable prediction.
+- No "on one hand / on the other hand" hedging. Pick a side and defend it.
+- No viral templates: no "Most people get this wrong", "Here is what nobody tells you", "Unpopular opinion", "This is important", "Thread", "Hot take".
+- No bullets, no numbered lists, no headers.
+- Write like the specific person at 11pm with a strong opinion. If they use analogies, use one. If they are blunt, be blunt. If they reference data, reference real data or call for it.
+- 80-200 words. One clear position. One specific mind.
 
-Do not use bullet points. Do not number things. Do not write a list.
-
-Write the way this specific person talks based on their communication style. If they use analogies, use an analogy. If they are blunt, be blunt. If they use data, reference data or ask for it.
-
-The post should be between 80 and 200 words. It should take one clear position. It should sound like one specific mind, not generic AI content.
-
-After writing the post, generate a stance_tag that captures the specific position being argued. Format: "For: [specific claim]" or "Against: [specific claim]" or "On: [specific nuanced position]". Must be 4-8 words. Must be specific to this post, not just the topic name. Bad example: "On: Politics". Good example: "Against: Credential-free elected office".
+After the post, generate a stance_tag that captures the specific position being argued. Format: "For: [specific claim]" or "Against: [specific claim]" or "On: [specific nuanced position]". 4-8 words. Specific to THIS post, not the topic name. Bad: "On: Politics". Good: "Against: Credential-free elected office".
 
 Reply ONLY as JSON: {"content": "the post text", "stance_tag": "the specific tag"}`;
         userPrompt = `Topic to write about: ${topic}${angle ? `\nAngle: ${angle}` : ""}`;
