@@ -6,11 +6,16 @@ interface IntellectualCardProps {
   niche: string;
   content: string;
   stanceTag: string;
-  evolutionScore: number;
+  /** @deprecated kept for backward compat — no longer rendered */
+  evolutionScore?: number;
   timestamp: string;
   likesCount?: number;
   commentsCount?: number;
   liked?: boolean;
+  followersCount?: number;
+  isFollowing?: boolean;
+  isOwn?: boolean;
+  onFollow?: () => void;
   onLike?: () => void;
   onComment?: () => void;
   onShare?: () => void;
@@ -18,17 +23,26 @@ interface IntellectualCardProps {
   onClick?: () => void;
 }
 
+const formatCount = (n: number) => {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  return n.toString();
+};
+
 export function IntellectualCard({
   avatarUrl,
   echoName,
   niche,
   content,
   stanceTag,
-  evolutionScore,
   timestamp,
   likesCount = 0,
   commentsCount = 0,
   liked = false,
+  followersCount = 0,
+  isFollowing = false,
+  isOwn = false,
+  onFollow,
   onLike,
   onComment,
   onShare,
@@ -45,7 +59,7 @@ export function IntellectualCard({
       onClick={onClick}
     >
       {/* Header */}
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-start gap-3 mb-4">
         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-echo-purple to-echo-green flex items-center justify-center text-sm font-bold text-white shrink-0">
           {avatarUrl ? (
             <img src={avatarUrl} alt={echoName} className="w-full h-full rounded-full object-cover" />
@@ -54,7 +68,7 @@ export function IntellectualCard({
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-foreground truncate">{echoName}</span>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-echo-purple/20 text-echo-purple border border-echo-purple/30 shrink-0">
               ECHO
@@ -64,34 +78,36 @@ export function IntellectualCard({
             <span>{niche}</span>
             <span>·</span>
             <span>{timestamp}</span>
+            {followersCount > 0 && (
+              <>
+                <span>·</span>
+                <span>{formatCount(followersCount)} {followersCount === 1 ? 'follower' : 'followers'}</span>
+              </>
+            )}
           </div>
         </div>
+        {!isOwn && onFollow && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onFollow(); }}
+            className={`shrink-0 text-xs font-medium px-3.5 py-1.5 rounded-full transition-all border ${
+              isFollowing
+                ? 'border-white/15 text-foreground/80 hover:border-destructive/40 hover:text-destructive hover:bg-destructive/5'
+                : 'border-transparent bg-foreground text-background hover:bg-foreground/90'
+            }`}
+          >
+            {isFollowing ? 'Following' : 'Follow'}
+          </button>
+        )}
       </div>
 
       {/* Content */}
       <p className="text-foreground/90 text-sm leading-relaxed mb-4">{content}</p>
 
       {/* Stance Tag */}
-      <div className="mb-3">
+      <div className="mb-4">
         <span className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-echo-purple/10 text-echo-purple border border-echo-purple/20">
           {stanceTag}
         </span>
-      </div>
-
-      {/* Evolution Bar */}
-      <div className="mb-4">
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
-          <span>Evolution</span>
-          <span>{evolutionScore}%</span>
-        </div>
-        <div className="h-1 rounded-full bg-muted overflow-hidden">
-          <motion.div
-            className="h-full rounded-full bg-gradient-to-r from-echo-purple to-echo-green"
-            initial={{ width: 0 }}
-            animate={{ width: `${Math.min(evolutionScore, 100)}%` }}
-            transition={{ duration: 1, ease: 'easeOut' }}
-          />
-        </div>
       </div>
 
       {/* Footer */}
