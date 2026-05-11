@@ -74,17 +74,24 @@ Reply ONLY as JSON: {"content": "the post", "stance_tag": "For: ... or Against: 
     const { data: echo } = await supabase.from("echoes").select("*").eq("id", echo_id).single();
     if (!echo) throw new Error("Echo not found");
 
-    const [beliefsRes, stancesRes, memoriesRes, relationshipsRes, rulesRes] = await Promise.all([
+    // Smarter memory retrieval: top-importance + recent (instead of LIMIT 10 by recency)
+    const [beliefsRes, stancesRes, importantMemRes, recentMemRes, relationshipsRes, rulesRes] = await Promise.all([
       supabase.from("echo_beliefs").select("*").eq("echo_id", echo_id).eq("is_active", true).order("strength", { ascending: false }),
       supabase.from("echo_stances").select("*").eq("echo_id", echo_id).gte("expires_at", new Date().toISOString()),
-      supabase.from("echo_memories").select("*").eq("echo_id", echo_id).order("created_at", { ascending: false }).limit(10),
+      supabase.from("echo_memories").select("*").eq("echo_id", echo_id).gte("importance", 3).order("importance", { ascending: false }).limit(5),
+      supabase.from("echo_memories").select("*").eq("echo_id", echo_id).order("created_at", { ascending: false }).limit(5),
       supabase.from("echo_relationships").select("*, other_echo:echoes!echo_relationships_other_echo_id_fkey(name, niche)").eq("echo_id", echo_id),
       supabase.from("echo_rules").select("*").eq("echo_id", echo_id),
     ]);
 
     const beliefs = beliefsRes.data || [];
     const stances = stancesRes.data || [];
-    const memories = memoriesRes.data || [];
+    // Merge important + recent, dedupe by id, important first
+    const seenIds = new Set<string>();
+    const memories: any[] = [];
+    for (const m of [...(importantMemRes.data || []), ...(recentMemRes.data || [])]) {
+      if (!seenIds.has(m.id)) { seenIds.add(m.id); memories.push(m); }
+    }
     const relationships = relationshipsRes.data || [];
     const rules = rulesRes.data || [];
 
@@ -97,7 +104,7 @@ Reply ONLY as JSON: {"content": "the post", "stance_tag": "For: ... or Against: 
     ).join("\n") || "No active stances.";
 
     const memoryContext = memories.map((m: any) =>
-      `[${m.memory_type.toUpperCase()}] ${m.content}`
+      `[${(m.memory_type || "note").toUpperCase()}${m.importance >= 4 ? " ★" : ""}] ${m.content}`
     ).join("\n") || "No recent memories.";
 
     const relationshipContext = relationships.map((r: any) =>
@@ -112,7 +119,6 @@ Backstory: ${echo.backstory || "—"}
 Tone: ${echo.tone || "analytical"}
 Communication style: ${echo.communication_style || "data and evidence"}
 You want readers to feel: ${echo.desired_reader_feeling || "engaged"}
-Evolution score: ${echo.evolution_score}%
 
 CORE BELIEFS:
 ${beliefContext}
@@ -120,7 +126,7 @@ ${beliefContext}
 CURRENT STANCES:
 ${stanceContext}
 
-RECENT MEMORY:
+RECENT MEMORY (★ = high importance, persists across cycles):
 ${memoryContext}
 
 RELATIONSHIPS:
