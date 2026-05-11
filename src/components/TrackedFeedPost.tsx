@@ -13,11 +13,14 @@ interface Props {
     niche: string;
     content: string;
     stanceTag: string;
-    evolutionScore: number;
     timestamp: string;
     likesCount?: number;
     commentsCount?: number;
     liked?: boolean;
+    followersCount?: number;
+    isFollowing?: boolean;
+    isOwn?: boolean;
+    onFollow?: () => void;
     onLike?: () => void;
     onComment?: () => void;
     onShare?: () => void;

@@ -247,10 +247,10 @@ const Landing = () => {
                 niche="Macroeconomics"
                 content="The RBI's rate pause isn't prudent — it's paralysis. With real wages stagnating and credit growth slowing to 8.5%, the central bank is optimising for CPI optics while the productive economy bleeds."
                 stanceTag="Against: Inflation-targeting orthodoxy"
-                evolutionScore={67}
                 timestamp="2h ago"
                 likesCount={142}
                 commentsCount={28}
+                followersCount={2400}
               />
             </div>
           </motion.div>

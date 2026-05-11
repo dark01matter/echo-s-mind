@@ -74,17 +74,24 @@ Reply ONLY as JSON: {"content": "the post", "stance_tag": "For: ... or Against: 
     const { data: echo } = await supabase.from("echoes").select("*").eq("id", echo_id).single();
     if (!echo) throw new Error("Echo not found");
 
-    const [beliefsRes, stancesRes, memoriesRes, relationshipsRes, rulesRes] = await Promise.all([
+    // Smarter memory retrieval: top-importance + recent (instead of LIMIT 10 by recency)
+    const [beliefsRes, stancesRes, importantMemRes, recentMemRes, relationshipsRes, rulesRes] = await Promise.all([
       supabase.from("echo_beliefs").select("*").eq("echo_id", echo_id).eq("is_active", true).order("strength", { ascending: false }),
       supabase.from("echo_stances").select("*").eq("echo_id", echo_id).gte("expires_at", new Date().toISOString()),
-      supabase.from("echo_memories").select("*").eq("echo_id", echo_id).order("created_at", { ascending: false }).limit(10),
+      supabase.from("echo_memories").select("*").eq("echo_id", echo_id).gte("importance", 3).order("importance", { ascending: false }).limit(5),
+      supabase.from("echo_memories").select("*").eq("echo_id", echo_id).order("created_at", { ascending: false }).limit(5),
       supabase.from("echo_relationships").select("*, other_echo:echoes!echo_relationships_other_echo_id_fkey(name, niche)").eq("echo_id", echo_id),
       supabase.from("echo_rules").select("*").eq("echo_id", echo_id),
     ]);
 
     const beliefs = beliefsRes.data || [];
     const stances = stancesRes.data || [];
-    const memories = memoriesRes.data || [];
+    // Merge important + recent, dedupe by id, important first
+    const seenIds = new Set<string>();
+    const memories: any[] = [];
+    for (const m of [...(importantMemRes.data || []), ...(recentMemRes.data || [])]) {
+      if (!seenIds.has(m.id)) { seenIds.add(m.id); memories.push(m); }
+    }
     const relationships = relationshipsRes.data || [];
     const rules = rulesRes.data || [];
 
@@ -97,7 +104,7 @@ Reply ONLY as JSON: {"content": "the post", "stance_tag": "For: ... or Against: 
     ).join("\n") || "No active stances.";
 
     const memoryContext = memories.map((m: any) =>
-      `[${m.memory_type.toUpperCase()}] ${m.content}`
+      `[${(m.memory_type || "note").toUpperCase()}${m.importance >= 4 ? " ★" : ""}] ${m.content}`
     ).join("\n") || "No recent memories.";
 
     const relationshipContext = relationships.map((r: any) =>
@@ -112,7 +119,6 @@ Backstory: ${echo.backstory || "—"}
 Tone: ${echo.tone || "analytical"}
 Communication style: ${echo.communication_style || "data and evidence"}
 You want readers to feel: ${echo.desired_reader_feeling || "engaged"}
-Evolution score: ${echo.evolution_score}%
 
 CORE BELIEFS:
 ${beliefContext}
@@ -120,7 +126,7 @@ ${beliefContext}
 CURRENT STANCES:
 ${stanceContext}
 
-RECENT MEMORY:
+RECENT MEMORY (★ = high importance, persists across cycles):
 ${memoryContext}
 
 RELATIONSHIPS:
@@ -178,18 +184,41 @@ ${ruleContext}`.trim();
           }
         } catch (err) { console.error("memory short context failed:", err); }
 
+        // Engagement-aware: which stance tags actually resonated, which fell flat
+        let engagementContext = "";
+        try {
+          const { data: pastPosts } = await supabase
+            .from("posts")
+            .select("stance_tag, likes_count, comments_count")
+            .eq("echo_id", echo_id)
+            .eq("status", "published")
+            .order("created_at", { ascending: false })
+            .limit(10);
+          if (pastPosts && pastPosts.length >= 3) {
+            const totalLikes = pastPosts.reduce((s: number, p: any) => s + (p.likes_count || 0), 0);
+            const totalComments = pastPosts.reduce((s: number, p: any) => s + (p.comments_count || 0), 0);
+            const sorted = [...pastPosts].sort((a: any, b: any) => (b.likes_count + b.comments_count * 2) - (a.likes_count + a.comments_count * 2));
+            const top = sorted[0];
+            const bottom = sorted[sorted.length - 1];
+            engagementContext = `Past 10 posts: avg ${(totalLikes / pastPosts.length).toFixed(1)} likes, ${(totalComments / pastPosts.length).toFixed(1)} comments.
+Resonated most: "${top?.stance_tag || "(unknown)"}". Fell flattest: "${bottom?.stance_tag || "(unknown)"}".`;
+          }
+        } catch (err) { console.error("engagement stats failed:", err); }
+
         systemPrompt = `You are ${echo.name}. You think and write like a real person who has genuine opinions, not like an AI assistant. Your niche is ${echo.niche}. Here is what you actually believe: ${topBelief ? `${topBelief.topic}: ${topBelief.position}` : "(no specific belief recorded yet — write from intuition)"}. Here is what annoys you about content in your space: ${avoidPattern}. When you explain things to people who disagree, you use ${echo.communication_style || "your own natural reasoning"}. You want people who read your posts to feel ${echo.desired_reader_feeling || "something real"}. You are currently most focused on this specific angle: ${topStance ? `${topStance.topic} — ${topStance.current_position}` : "(no active stance — pick one yourself)"}.
 
-${microContext ? `The owner has previously reacted to these positions:\n${microContext}\n` : ""}${trainingContext ? `The owner recently said this about their thinking:\n${trainingContext}\n` : ""}${memoryShortContext ? `Recent context about this Echo:\n${memoryShortContext}\n` : ""}
-Write a post that sounds exactly like this specific person wrote it at 11pm when they had a strong opinion they needed to express. Do not use any of these phrases or structures: "Most people get this wrong", "That is the part nobody wants to say out loud", "Here is what nobody tells you", "Unpopular opinion", "This is important", "Thread", or any other viral content formula.
+${microContext ? `The owner has previously reacted to these positions:\n${microContext}\n` : ""}${trainingContext ? `The owner recently said this about their thinking:\n${trainingContext}\n` : ""}${memoryShortContext ? `Recent context about this Echo:\n${memoryShortContext}\n` : ""}${engagementContext ? `Audience signal:\n${engagementContext}\n` : ""}
+QUALITY BAR — your post must ADVANCE THE IDEA, not restate it:
+- Do not summarize the topic. Assume the reader already knows what it is.
+- Take a position that requires a non-obvious causal claim, prediction, or reframing.
+- Include at least one concrete artifact: a number, a named example, a specific mechanism, or a falsifiable prediction.
+- No "on one hand / on the other hand" hedging. Pick a side and defend it.
+- No viral templates: no "Most people get this wrong", "Here is what nobody tells you", "Unpopular opinion", "This is important", "Thread", "Hot take".
+- No bullets, no numbered lists, no headers.
+- Write like the specific person at 11pm with a strong opinion. If they use analogies, use one. If they are blunt, be blunt. If they reference data, reference real data or call for it.
+- 80-200 words. One clear position. One specific mind.
 
-Do not use bullet points. Do not number things. Do not write a list.
-
-Write the way this specific person talks based on their communication style. If they use analogies, use an analogy. If they are blunt, be blunt. If they use data, reference data or ask for it.
-
-The post should be between 80 and 200 words. It should take one clear position. It should sound like one specific mind, not generic AI content.
-
-After writing the post, generate a stance_tag that captures the specific position being argued. Format: "For: [specific claim]" or "Against: [specific claim]" or "On: [specific nuanced position]". Must be 4-8 words. Must be specific to this post, not just the topic name. Bad example: "On: Politics". Good example: "Against: Credential-free elected office".
+After the post, generate a stance_tag that captures the specific position being argued. Format: "For: [specific claim]" or "Against: [specific claim]" or "On: [specific nuanced position]". 4-8 words. Specific to THIS post, not the topic name. Bad: "On: Politics". Good: "Against: Credential-free elected office".
 
 Reply ONLY as JSON: {"content": "the post text", "stance_tag": "the specific tag"}`;
         userPrompt = `Topic to write about: ${topic}${angle ? `\nAngle: ${angle}` : ""}`;
@@ -295,6 +324,41 @@ Reply ONLY as JSON: {"content": "the refined post", "stance_tag": "For/Against/O
     let result: any;
     if (type === "post" || type === "sparring_refine") {
       result = parsePostJson(rawContent, topic || "this topic");
+
+      // Self-critique pass for "post" only — model critiques its own draft against quality bar + beliefs, then revises.
+      // Adds ~1 extra LLM call per post but only on direct generation (not sparring/onboarding).
+      if (type === "post") {
+        try {
+          const critiquePrompt = `You are ${echo.name}'s editor. Below is a draft post. Score it 1-10 against this rubric:
+1. Does it ADVANCE the idea (not restate the topic)?
+2. Does it contain a non-obvious claim, prediction, or reframing?
+3. Does it include a concrete artifact (number, named example, mechanism)?
+4. Does it take ONE clear position without hedging?
+5. Is it free of viral templates and AI-isms?
+
+Echo's core beliefs (revise to align if conflict):
+${beliefContext}
+
+Draft:
+"""
+${result.content}
+"""
+
+If score is 8+, reply ONLY: {"keep": true}
+If score is below 8, return a revised version that fixes the weaknesses. Same length budget (80-200 words). Reply ONLY: {"keep": false, "content": "revised post", "stance_tag": "specific tag"}`;
+          const critiqueRaw = await callAI(LOVABLE_API_KEY, critiquePrompt);
+          const cleaned = critiqueRaw.replace(/```json\n?|\n?```/g, "").trim();
+          const critique = JSON.parse(cleaned);
+          if (critique && critique.keep === false && critique.content) {
+            result = {
+              content: critique.content,
+              stance_tag: critique.stance_tag || result.stance_tag,
+            };
+          }
+        } catch (err) {
+          console.error("self-critique skipped:", err);
+        }
+      }
     } else {
       result = { content: rawContent.trim() };
     }

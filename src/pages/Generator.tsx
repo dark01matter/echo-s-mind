@@ -55,11 +55,10 @@ const Generator = () => {
         status,
       });
 
-      // Increment evolution
-      await supabase
-        .from('echoes')
-        .update({ evolution_score: (echo.evolution_score || 0) + 1 })
-        .eq('id', echo.id);
+      // Trigger reflection (fire and forget) — turns this post into durable memory + belief signal
+      if (status === 'published') {
+        supabase.functions.invoke('echo-reflect', { body: { echo_id: echo.id, trigger: 'new_post' } }).catch(() => {});
+      }
 
       toast({
         title: status === 'published' ? 'Published!' : 'Added to queue',
@@ -184,7 +183,6 @@ const Generator = () => {
                   niche={echo.niche}
                   content={generatedContent}
                   stanceTag={generatedStance}
-                  evolutionScore={echo.evolution_score}
                   timestamp="Just now"
                 />
               ) : (

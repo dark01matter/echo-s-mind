@@ -164,7 +164,7 @@ const Onboarding = () => {
           tone: 'analytical',
           communication_style: allAnswers['3'],
           desired_reader_feeling: allAnswers['5'],
-          evolution_score: 5,
+          
         })
         .select()
         .single();
@@ -481,7 +481,6 @@ const Onboarding = () => {
               niche={niche}
               content={draft.content}
               stanceTag={draft.stance_tag}
-              evolutionScore={5}
               timestamp="Just now"
             />
           </div>

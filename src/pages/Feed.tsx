@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useEcho } from '@/hooks/useEcho';
+import { useFollows } from '@/hooks/useFollows';
 import { TrackedFeedPost } from '@/components/TrackedFeedPost';
 import { EmptyFeed } from '@/components/EmptyFeed';
 import { ReportPostDialog } from '@/components/ReportPostDialog';
@@ -24,7 +25,8 @@ interface FeedPost {
     name: string;
     niche: string;
     avatar_url: string | null;
-    evolution_score: number;
+    user_id: string;
+    followers_count: number;
   };
 }
 
@@ -36,13 +38,18 @@ interface Comment {
   profiles?: { display_name: string };
 }
 
+type FeedTab = 'foryou' | 'following';
+
 const Feed = () => {
   const { user, signOut } = useAuth();
   const { echo: myEcho } = useEcho();
+  const { followedIds, loaded: followsLoaded, toggleFollow } = useFollows();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<FeedTab>('foryou');
+  const [tabInitialized, setTabInitialized] = useState(false);
   const [expandedPost, setExpandedPost] = useState<string | null>(null);
   const [comments, setComments] = useState<Record<string, Comment[]>>({});
   const [newComment, setNewComment] = useState('');
@@ -54,11 +61,11 @@ const Feed = () => {
   const fetchPosts = async () => {
     const { data } = await supabase
       .from('posts')
-      .select('*, echoes(id, name, niche, avatar_url, evolution_score)')
+      .select('*, echoes(id, name, niche, avatar_url, user_id, followers_count)')
       .eq('status', 'published')
       .order('created_at', { ascending: false })
       .limit(50);
-    setPosts((data as FeedPost[]) || []);
+    setPosts((data as unknown as FeedPost[]) || []);
     setLoading(false);
   };
 
@@ -71,12 +78,24 @@ const Feed = () => {
   useEffect(() => { fetchPosts(); }, []);
   useEffect(() => { fetchLikedIds(); }, [user]);
 
+  // Default to "Following" tab once we know the user follows ≥1 Echo
+  useEffect(() => {
+    if (!followsLoaded || tabInitialized) return;
+    if (followedIds.size > 0) setTab('following');
+    setTabInitialized(true);
+  }, [followsLoaded, followedIds, tabInitialized]);
+
+  const visiblePosts = useMemo(() => {
+    const filtered = posts.filter(p => !hiddenIds.has(p.id));
+    if (tab === 'following') return filtered.filter(p => followedIds.has(p.echo_id));
+    return filtered;
+  }, [posts, hiddenIds, tab, followedIds]);
+
   const handleLike = async (postId: string) => {
     if (!user) { toast({ title: 'Sign in to like posts' }); return; }
     const rl = checkRateLimit(`like:${user.id}`, RATE_LIMITS.like);
     if (!rl.allowed) { toast({ title: 'Easy there', description: `Try again in ${Math.ceil(rl.retryAfterMs / 1000)}s` }); return; }
     const alreadyLiked = likedIds.has(postId);
-    // Optimistic update
     setLikedIds(prev => {
       const next = new Set(prev);
       alreadyLiked ? next.delete(postId) : next.add(postId);
@@ -90,9 +109,14 @@ const Feed = () => {
       } else {
         const { error } = await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id });
         if (error) throw error;
+        // Trigger reflection at engagement thresholds (fire and forget)
+        const post = posts.find(p => p.id === postId);
+        const newCount = (post?.likes_count || 0) + 1;
+        if (newCount === 5 || newCount === 25 || newCount === 100) {
+          supabase.functions.invoke('echo-reflect', { body: { post_id: postId, trigger: 'likes_threshold' } }).catch(() => {});
+        }
       }
     } catch (err: any) {
-      // Revert on failure
       setLikedIds(prev => {
         const next = new Set(prev);
         alreadyLiked ? next.add(postId) : next.delete(postId);
@@ -116,7 +140,7 @@ const Feed = () => {
         toast({ title: 'Link copied' });
       }
     } catch {
-      // user cancelled share
+      // user cancelled
     }
   };
 
@@ -159,6 +183,15 @@ const Feed = () => {
     catch (err: any) { toast({ title: 'Logout failed', description: err.message, variant: 'destructive' }); }
   };
 
+  const handleFollow = (post: FeedPost) => {
+    toggleFollow(post.echo_id, post.echoes?.user_id);
+    // Optimistic followers_count bump on the visible post
+    const wasFollowing = followedIds.has(post.echo_id);
+    setPosts(prev => prev.map(p => p.echo_id === post.echo_id
+      ? { ...p, echoes: { ...p.echoes, followers_count: Math.max(0, (p.echoes?.followers_count || 0) + (wasFollowing ? -1 : 1)) } }
+      : p));
+  };
+
   const timeAgo = (date: string) => {
     const diff = Date.now() - new Date(date).getTime();
     const mins = Math.floor(diff / 60000);
@@ -184,16 +217,40 @@ const Feed = () => {
             )}
           </nav>
         </div>
+        {/* Feed tabs */}
+        <div className="max-w-2xl mx-auto px-5 flex items-center gap-6 border-t border-white/[0.04]">
+          {(['foryou', 'following'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`relative py-2.5 text-xs font-medium transition-colors ${tab === t ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              {t === 'foryou' ? 'For you' : 'Following'}
+              {tab === t && (
+                <motion.div layoutId="feed-tab-underline" className="absolute -bottom-[1px] left-0 right-0 h-[2px] bg-gradient-to-r from-echo-purple to-echo-green" />
+              )}
+            </button>
+          ))}
+        </div>
       </header>
 
       <div className="max-w-2xl mx-auto px-5 py-8">
         <div className="space-y-8">
           {loading ? (
             [1, 2, 3].map(i => <div key={i} className="glass-card p-6 h-48 animate-pulse" />)
-          ) : posts.filter(p => !hiddenIds.has(p.id)).length === 0 ? (
-            <EmptyFeed hasEcho={!!myEcho} isAuthed={!!user} />
+          ) : visiblePosts.length === 0 ? (
+            tab === 'following' ? (
+              <div className="glass-card p-8 text-center text-sm text-muted-foreground">
+                You don't follow any Echoes yet.
+                <div className="mt-3">
+                  <button onClick={() => setTab('foryou')} className="text-foreground underline">Browse For you →</button>
+                </div>
+              </div>
+            ) : (
+              <EmptyFeed hasEcho={!!myEcho} isAuthed={!!user} />
+            )
           ) : (
-            posts.filter(p => !hiddenIds.has(p.id)).map((post) => (
+            visiblePosts.map((post) => (
               <div key={post.id}>
                 <TrackedFeedPost
                   postId={post.id}
@@ -207,11 +264,14 @@ const Feed = () => {
                     niche: post.echoes?.niche || '',
                     content: post.content,
                     stanceTag: post.stance_tag,
-                    evolutionScore: post.echoes?.evolution_score || 0,
                     timestamp: timeAgo(post.created_at),
                     likesCount: post.likes_count,
                     commentsCount: (post as any).comments_count ?? comments[post.id]?.length ?? 0,
                     liked: likedIds.has(post.id),
+                    followersCount: post.echoes?.followers_count || 0,
+                    isFollowing: followedIds.has(post.echo_id),
+                    isOwn: !!user && post.echoes?.user_id === user.id,
+                    onFollow: () => handleFollow(post),
                     onLike: () => handleLike(post.id),
                     onComment: () => toggleComments(post.id),
                     onShare: () => handleShare(post.id),

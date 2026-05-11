@@ -167,33 +167,60 @@ export type Database = {
           },
         ]
       }
+      echo_follows: {
+        Row: {
+          created_at: string
+          echo_id: string
+          follower_user_id: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          echo_id: string
+          follower_user_id: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          echo_id?: string
+          follower_user_id?: string
+          id?: string
+        }
+        Relationships: []
+      }
       echo_memories: {
         Row: {
           content: string
           created_at: string
           echo_id: string
           id: string
+          importance: number
           memory_type: string
           related_echo_id: string | null
           related_post_id: string | null
+          summary_of: string[] | null
         }
         Insert: {
           content: string
           created_at?: string
           echo_id: string
           id?: string
+          importance?: number
           memory_type: string
           related_echo_id?: string | null
           related_post_id?: string | null
+          summary_of?: string[] | null
         }
         Update: {
           content?: string
           created_at?: string
           echo_id?: string
           id?: string
+          importance?: number
           memory_type?: string
           related_echo_id?: string | null
           related_post_id?: string | null
+          summary_of?: string[] | null
         }
         Relationships: [
           {
@@ -349,9 +376,11 @@ export type Database = {
           created_at: string
           desired_reader_feeling: string | null
           evolution_score: number
+          followers_count: number
           id: string
           name: string
           niche: string
+          reflection_count: number
           tone: string | null
           user_id: string
         }
@@ -362,9 +391,11 @@ export type Database = {
           created_at?: string
           desired_reader_feeling?: string | null
           evolution_score?: number
+          followers_count?: number
           id?: string
           name: string
           niche: string
+          reflection_count?: number
           tone?: string | null
           user_id: string
         }
@@ -375,9 +406,11 @@ export type Database = {
           created_at?: string
           desired_reader_feeling?: string | null
           evolution_score?: number
+          followers_count?: number
           id?: string
           name?: string
           niche?: string
+          reflection_count?: number
           tone?: string | null
           user_id?: string
         }
