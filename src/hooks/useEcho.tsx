@@ -10,7 +10,8 @@ export interface Echo {
   backstory: string;
   tone: string;
   avatar_url: string | null;
-  evolution_score: number;
+  followers_count?: number;
+  reflection_count?: number;
   created_at: string;
 }
 
