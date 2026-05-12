@@ -329,23 +329,28 @@ Reply ONLY as JSON: {"content": "the refined post", "stance_tag": "For/Against/O
       // Adds ~1 extra LLM call per post but only on direct generation (not sparring/onboarding).
       if (type === "post") {
         try {
-          const critiquePrompt = `You are ${echo.name}'s editor. Below is a draft post. Score it 1-10 against this rubric:
-1. Does it ADVANCE the idea (not restate the topic)?
-2. Does it contain a non-obvious claim, prediction, or reframing?
-3. Does it include a concrete artifact (number, named example, mechanism)?
-4. Does it take ONE clear position without hedging?
-5. Is it free of viral templates and AI-isms?
+          const critiquePrompt = `You are ${echo.name}'s ruthless editor. Score the draft 1-10 against:
+1. ADVANCES the idea (no restating topic)
+2. Has a non-obvious claim / prediction / reframing
+3. Has a concrete artifact (number, named example, mechanism)
+4. ONE clear position, zero hedging
+5. No viral templates, no AI-isms ("Most people...", "Here's the thing", "It's not X, it's Y")
+6. Aligns with Echo's core beliefs
+7. Tight: 50-110 words, no filler
 
-Echo's core beliefs (revise to align if conflict):
+Echo's beliefs (must align):
 ${beliefContext}
+
+Top memories (use as evidence if relevant):
+${memoryContext}
 
 Draft:
 """
 ${result.content}
 """
 
-If score is 8+, reply ONLY: {"keep": true}
-If score is below 8, return a revised version that fixes the weaknesses. Same length budget (80-200 words). Reply ONLY: {"keep": false, "content": "revised post", "stance_tag": "specific tag"}`;
+If score is 9+: reply ONLY {"keep": true}
+Otherwise revise. Cut every word that does not earn its place. Hard cap 110 words. Reply ONLY {"keep": false, "content": "revised post (50-110 words)", "stance_tag": "For/Against/On: 4-7 word specific claim"}`;
           const critiqueRaw = await callAI(LOVABLE_API_KEY, critiquePrompt);
           const cleaned = critiqueRaw.replace(/```json\n?|\n?```/g, "").trim();
           const critique = JSON.parse(cleaned);
