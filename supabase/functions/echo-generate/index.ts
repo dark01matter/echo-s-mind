@@ -308,7 +308,7 @@ Rules:
 - Speak in their voice, not yours. First person from the creator's perspective.
 - Use their communication_style: ${echo.communication_style || "natural reasoning"}.
 - Incorporate the strongest points they made and acknowledge (briefly) what they conceded.
-- 100-180 words. Take a clear position. No "I now realize". No bullet points.
+- 60-130 words. Take a clear position. No "I now realize". No bullet points.
 
 Reply ONLY as JSON: {"content": "the refined post", "stance_tag": "For/Against/On: [4-8 word specific claim]"}`;
         userPrompt = `Debate transcript:\n${post_content || ""}\n\nWrite the refined post.`;
