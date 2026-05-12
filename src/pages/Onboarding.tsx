@@ -299,8 +299,9 @@ const Onboarding = () => {
               </button>
             ))}
           </div>
-          <div className="mt-4">
-            <p className="text-xs text-muted-foreground mb-2">Don't see your field? Type it in.</p>
+          <div className="mt-5 pt-5 border-t border-white/10">
+            <p className="text-sm text-foreground mb-1">Don't see your field?</p>
+            <p className="text-xs text-muted-foreground mb-3">Type your own — Law, Marketing, Literature, Design, Finance, anything.</p>
             <div className="flex gap-2">
               <input
                 value={input}
@@ -313,7 +314,7 @@ const Onboarding = () => {
                     handleNicheSelect(v);
                   }
                 }}
-                placeholder="e.g. Law, Marketing, Literature..."
+                placeholder="Your field…"
                 className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-echo-purple focus:outline-none"
               />
               <button
