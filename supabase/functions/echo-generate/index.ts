@@ -54,7 +54,7 @@ A real person just told you these things about themselves:
 - Real prose sample they stand by: "${a["4"] || ""}"
 - How they want readers to feel: "${a["5"] || ""}"
 
-Write a single short post (under 200 words) that:
+Write a single tight post (50-110 words, shorter is better) that:
 - Sounds like that real person, not like AI. Mimic the rhythm/voice of their prose sample (#4).
 - Centers on their contrarian belief (#1).
 - Avoids the patterns they hate (#2).
