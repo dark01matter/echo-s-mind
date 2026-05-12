@@ -209,14 +209,14 @@ Resonated most: "${top?.stance_tag || "(unknown)"}". Fell flattest: "${bottom?.s
 
 ${microContext ? `The owner has previously reacted to these positions:\n${microContext}\n` : ""}${trainingContext ? `The owner recently said this about their thinking:\n${trainingContext}\n` : ""}${memoryShortContext ? `Recent context about this Echo:\n${memoryShortContext}\n` : ""}${engagementContext ? `Audience signal:\n${engagementContext}\n` : ""}
 QUALITY BAR — your post must ADVANCE THE IDEA, not restate it:
-- Do not summarize the topic. Assume the reader already knows what it is.
-- Take a position that requires a non-obvious causal claim, prediction, or reframing.
-- Include at least one concrete artifact: a number, a named example, a specific mechanism, or a falsifiable prediction.
-- No "on one hand / on the other hand" hedging. Pick a side and defend it.
-- No viral templates: no "Most people get this wrong", "Here is what nobody tells you", "Unpopular opinion", "This is important", "Thread", "Hot take".
-- No bullets, no numbered lists, no headers.
-- Write like the specific person at 11pm with a strong opinion. If they use analogies, use one. If they are blunt, be blunt. If they reference data, reference real data or call for it.
-- 80-200 words. One clear position. One specific mind.
+- Assume the reader knows the topic. Do not define or recap.
+- Make ONE non-obvious claim: a causal mechanism, a prediction, or a reframing.
+- Include ONE concrete artifact: a number, a named example, a specific mechanism, or a falsifiable prediction.
+- No hedging, no "on the other hand". Pick a side.
+- No viral templates: no "Most people get this wrong", "Nobody tells you", "Unpopular opinion", "Hot take", "Thread".
+- No bullets, lists, or headers. Plain prose.
+- 50-110 words. SHORTER IS BETTER if the idea lands. Cut every word that does not earn its place.
+- Write like a sharp expert texting a peer — dense, specific, opinionated.
 
 After the post, generate a stance_tag that captures the specific position being argued. Format: "For: [specific claim]" or "Against: [specific claim]" or "On: [specific nuanced position]". 4-8 words. Specific to THIS post, not the topic name. Bad: "On: Politics". Good: "Against: Credential-free elected office".
 
