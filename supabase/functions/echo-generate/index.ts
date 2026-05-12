@@ -54,7 +54,7 @@ A real person just told you these things about themselves:
 - Real prose sample they stand by: "${a["4"] || ""}"
 - How they want readers to feel: "${a["5"] || ""}"
 
-Write a single short post (under 200 words) that:
+Write a single tight post (50-110 words, shorter is better) that:
 - Sounds like that real person, not like AI. Mimic the rhythm/voice of their prose sample (#4).
 - Centers on their contrarian belief (#1).
 - Avoids the patterns they hate (#2).
@@ -209,14 +209,14 @@ Resonated most: "${top?.stance_tag || "(unknown)"}". Fell flattest: "${bottom?.s
 
 ${microContext ? `The owner has previously reacted to these positions:\n${microContext}\n` : ""}${trainingContext ? `The owner recently said this about their thinking:\n${trainingContext}\n` : ""}${memoryShortContext ? `Recent context about this Echo:\n${memoryShortContext}\n` : ""}${engagementContext ? `Audience signal:\n${engagementContext}\n` : ""}
 QUALITY BAR — your post must ADVANCE THE IDEA, not restate it:
-- Do not summarize the topic. Assume the reader already knows what it is.
-- Take a position that requires a non-obvious causal claim, prediction, or reframing.
-- Include at least one concrete artifact: a number, a named example, a specific mechanism, or a falsifiable prediction.
-- No "on one hand / on the other hand" hedging. Pick a side and defend it.
-- No viral templates: no "Most people get this wrong", "Here is what nobody tells you", "Unpopular opinion", "This is important", "Thread", "Hot take".
-- No bullets, no numbered lists, no headers.
-- Write like the specific person at 11pm with a strong opinion. If they use analogies, use one. If they are blunt, be blunt. If they reference data, reference real data or call for it.
-- 80-200 words. One clear position. One specific mind.
+- Assume the reader knows the topic. Do not define or recap.
+- Make ONE non-obvious claim: a causal mechanism, a prediction, or a reframing.
+- Include ONE concrete artifact: a number, a named example, a specific mechanism, or a falsifiable prediction.
+- No hedging, no "on the other hand". Pick a side.
+- No viral templates: no "Most people get this wrong", "Nobody tells you", "Unpopular opinion", "Hot take", "Thread".
+- No bullets, lists, or headers. Plain prose.
+- 50-110 words. SHORTER IS BETTER if the idea lands. Cut every word that does not earn its place.
+- Write like a sharp expert texting a peer — dense, specific, opinionated.
 
 After the post, generate a stance_tag that captures the specific position being argued. Format: "For: [specific claim]" or "Against: [specific claim]" or "On: [specific nuanced position]". 4-8 words. Specific to THIS post, not the topic name. Bad: "On: Politics". Good: "Against: Credential-free elected office".
 
@@ -308,7 +308,7 @@ Rules:
 - Speak in their voice, not yours. First person from the creator's perspective.
 - Use their communication_style: ${echo.communication_style || "natural reasoning"}.
 - Incorporate the strongest points they made and acknowledge (briefly) what they conceded.
-- 100-180 words. Take a clear position. No "I now realize". No bullet points.
+- 60-130 words. Take a clear position. No "I now realize". No bullet points.
 
 Reply ONLY as JSON: {"content": "the refined post", "stance_tag": "For/Against/On: [4-8 word specific claim]"}`;
         userPrompt = `Debate transcript:\n${post_content || ""}\n\nWrite the refined post.`;
@@ -329,23 +329,28 @@ Reply ONLY as JSON: {"content": "the refined post", "stance_tag": "For/Against/O
       // Adds ~1 extra LLM call per post but only on direct generation (not sparring/onboarding).
       if (type === "post") {
         try {
-          const critiquePrompt = `You are ${echo.name}'s editor. Below is a draft post. Score it 1-10 against this rubric:
-1. Does it ADVANCE the idea (not restate the topic)?
-2. Does it contain a non-obvious claim, prediction, or reframing?
-3. Does it include a concrete artifact (number, named example, mechanism)?
-4. Does it take ONE clear position without hedging?
-5. Is it free of viral templates and AI-isms?
+          const critiquePrompt = `You are ${echo.name}'s ruthless editor. Score the draft 1-10 against:
+1. ADVANCES the idea (no restating topic)
+2. Has a non-obvious claim / prediction / reframing
+3. Has a concrete artifact (number, named example, mechanism)
+4. ONE clear position, zero hedging
+5. No viral templates, no AI-isms ("Most people...", "Here's the thing", "It's not X, it's Y")
+6. Aligns with Echo's core beliefs
+7. Tight: 50-110 words, no filler
 
-Echo's core beliefs (revise to align if conflict):
+Echo's beliefs (must align):
 ${beliefContext}
+
+Top memories (use as evidence if relevant):
+${memoryContext}
 
 Draft:
 """
 ${result.content}
 """
 
-If score is 8+, reply ONLY: {"keep": true}
-If score is below 8, return a revised version that fixes the weaknesses. Same length budget (80-200 words). Reply ONLY: {"keep": false, "content": "revised post", "stance_tag": "specific tag"}`;
+If score is 9+: reply ONLY {"keep": true}
+Otherwise revise. Cut every word that does not earn its place. Hard cap 110 words. Reply ONLY {"keep": false, "content": "revised post (50-110 words)", "stance_tag": "For/Against/On: 4-7 word specific claim"}`;
           const critiqueRaw = await callAI(LOVABLE_API_KEY, critiquePrompt);
           const cleaned = critiqueRaw.replace(/```json\n?|\n?```/g, "").trim();
           const critique = JSON.parse(cleaned);
